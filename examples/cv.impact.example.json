@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 2,
+  "basics": {
+    "name": "Alex Example",
+    "headline": "Computer Vision Engineer",
+    "contact": [
+      "alex@example.com",
+      "+1 555 0100",
+      "github.com/example",
+      "Berlin, Germany"
+    ]
+  },
+  "summary": "Computer vision engineer who ships real-time perception systems for constrained hardware. Experienced in taking models from training notebooks to reliable edge deployment.",
+  "sectionTitles": {
+    "summary": "Profile",
+    "education": "Education",
+    "skills": "Skills",
+    "experience": "Experience",
+    "projects": "Projects",
+    "custom": "Additional"
+  },
+  "education": [
+    {
+      "degree": "BSc Artificial Intelligence",
+      "school": "Example University",
+      "meta": "GPA: 3.8\nBerlin, Germany\n2026"
+    }
+  ],
+  "skills": [
+    {
+      "label": "Programming",
+      "items": ["Python", "C++", "TypeScript"]
+    },
+    {
+      "label": "ML",
+      "items": ["PyTorch", "TensorRT", "OpenCV"]
+    }
+  ],
+  "experience": [
+    {
+      "role": "Machine Learning Intern",
+      "dates": "June 2025 – August 2025",
+      "org": "Example Labs – Berlin, Germany",
+      "blurb": "Perception team for autonomous systems.",
+      "bullets": [
+        "Built a real-time detector reaching 25 FPS on edge hardware.",
+        "Improved recall by 12% on an internal benchmark."
+      ],
+      "skills": ["PyTorch", "TensorRT", "Python"]
+    },
+    {
+      "role": "Software Engineer",
+      "dates": "August 2024 – June 2025",
+      "org": "Example Aerospace – Munich, Germany",
+      "bullets": [
+        "Developed vision-based targeting and precision landing software.",
+        "Integrated sensor fusion into the flight-control stack."
+      ],
+      "skills": ["C++", "ROS2", "OpenCV"]
+    }
+  ],
+  "projects": [
+    {
+      "role": "GPS-Denied Localisation",
+      "dates": "2026",
+      "org": "Final Year Project",
+      "problem": "Drones lose navigation when GPS is unavailable.",
+      "solution": "Matched aerial imagery against georeferenced tiles with learned features.",
+      "outcome": "Estimated position within 8 metres during live flight tests."
+    }
+  ],
+  "custom": []
+}

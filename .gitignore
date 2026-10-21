@@ -1,0 +1,11 @@
+node_modules/
+dist/
+local-data/
+workspace/
+*.pdf
+.env
+.env.*
+.DS_Store
+.vite/
+coverage/
+*.tsbuildinfo

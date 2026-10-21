@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "default",
+  "basics": {
+    "name": "Alex Example",
+    "headline": "Computer Vision Engineer",
+    "contact": [
+      "alex@example.com",
+      "+1 555 0100",
+      "github.com/example",
+      "Berlin, Germany"
+    ]
+  },
+  "pdr": {
+    "sourceName": "pdr.example.md",
+    "sourceKind": "md",
+    "importedAt": "2026-10-21T00:00:00.000Z",
+    "markdown": "# Alex Example\n\nComputer vision engineer based in Berlin.\n\n## Example Labs — Machine Learning Intern (June 2025 – August 2025)\n\n- Built a real-time detector reaching 25 FPS on edge hardware.\n- Improved recall by 12% on an internal benchmark.\n\n## Example Aerospace — Software Engineer (August 2024 – June 2025)\n\n- Developed vision-based targeting and precision landing software.\n- Integrated sensor fusion into the flight-control stack.\n\n## Education\n\nBSc Artificial Intelligence, Example University, 2026.\n\n## Skills\n\nPython, C++, PyTorch, TensorRT, OpenCV, ROS2.\n"
+  },
+  "sectionTitles": {
+    "summary": "Profile",
+    "education": "Education",
+    "skills": "Skills",
+    "experience": "Experience",
+    "projects": "Projects",
+    "custom": "Additional"
+  },
+  "defaultInstructions": "Keep the tone understated. Do not include a photo."
+}

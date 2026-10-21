@@ -1,0 +1,42 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #e9edf3;
+}
+body {
+  padding: 8mm;
+  font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+.cv-page {
+  margin: 0 auto;
+  background: #fff;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+}
+body.cv-editing [data-field] {
+  cursor: text;
+}
+body.cv-editing [data-field]:hover {
+  outline: 1px dashed #69a9e8;
+  outline-offset: 2px;
+}
+body.cv-editing [data-field]:focus {
+  outline: 2px solid #69a9e8;
+  outline-offset: 2px;
+  background: rgba(255, 235, 130, 0.12);
+}
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    padding: 0 !important;
+  }
+  .cv-page {
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+  [data-field] {
+    outline: none !important;
+    background: transparent !important;
+  }
+}
