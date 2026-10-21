@@ -82,12 +82,14 @@ export function PromptStage({
 
   const changeRenderer = (id: string) => {
     const next = getRenderer(id);
-    const nextSchema = next.meta.schemas.includes(project.schemaId)
-      ? project.schemaId
-      : next.meta.schemas[0];
-    const styles = { ...project.styles };
-    if (!styles[id]) styles[id] = defaultStyle();
-    onChange((current) => ({ ...current, rendererId: id, schemaId: nextSchema, styles }));
+    onChange((current) => {
+      const nextSchema = next.meta.schemas.includes(current.schemaId)
+        ? current.schemaId
+        : next.meta.schemas[0];
+      const styles = { ...current.styles };
+      if (!styles[id]) styles[id] = defaultStyle();
+      return { ...current, rendererId: id, schemaId: nextSchema, styles };
+    });
   };
 
   return (

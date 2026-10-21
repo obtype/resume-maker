@@ -8,7 +8,7 @@ interface Props {
   promptTemplate: string;
   templateSource: "bundled" | "override" | "fallback";
   onSaveTemplate: (text: string) => Promise<void>;
-  onResetTemplate: () => void;
+  onResetTemplate: () => Promise<void>;
   onReloadTemplate: () => void;
   onChangeWorkspace: () => void;
 }
@@ -45,6 +45,15 @@ export function SettingsView({
       await onSaveTemplate(draft);
       setSavedFlash(true);
       window.setTimeout(() => setSavedFlash(false), 1500);
+    } catch (error) {
+      setSaveError((error as Error).message);
+    }
+  };
+
+  const reset = async () => {
+    setSaveError("");
+    try {
+      await onResetTemplate();
     } catch (error) {
       setSaveError((error as Error).message);
     }
@@ -93,7 +102,7 @@ export function SettingsView({
         <div className="row">
           <button className="primary" onClick={() => void save()}>Save override</button>
           <button className="secondary" onClick={onReloadTemplate}>Reload</button>
-          <button className="ghost" onClick={onResetTemplate}>Use bundled default</button>
+          <button className="ghost" onClick={() => void reset()}>Use bundled default</button>
           {savedFlash && <span className="muted">Saved.</span>}
           {saveError && <span className="error-text">Save failed: {saveError}</span>}
         </div>

@@ -7,11 +7,11 @@ A local-first workbench for turning a personal data record and a job description
 - **Prompt pipeline** — paste a job description, generate one complete prompt (PDR + profile + reference CV + job + schema + rules), copy it to any LLM, then paste the JSON back.
 - **Schema-aware renderers** — each renderer declares the CV schema it supports. Pick a renderer, then pick one of its compatible output schemas for the prompt. The prompt and validation both use that schema.
 - **Multiple renderers** — Classic sidebar (no summary), Classic + Summary, and Impact (per-role skills, Problem / Solution / Outcome projects).
-- **Inline editing** — edit text directly in the preview, plus bold/italic/underline, bullets, selection font size, global text scale, spacing, margins, and sidebar width.
+- **Inline editing** — edit text directly in the preview, plus bold/italic/underline, selection font size, global text scale, spacing, margins, and sidebar width.
 - **Real PDF export** — a local Node endpoint renders the final CV with headless Chrome and writes a genuine A4 PDF into the project folder. A print-dialog fallback is always available.
 - **One place for prompt instructions** — the full prompt template lives in a Markdown config file. Edit the bundled version or save a workspace override from Settings.
 - **Local workspace** — each application gets a folder with `project.json`, `cv.json`, `inputs/`, `prompts/`, `responses/`, and the exported PDF.
-- **PDR import** — `.docx`, `.md`, and `.txt`, with the extracted text editable before it reaches a prompt.
+- **PDR import** — `.docx`, `.md`, `.txt`, or pasted text, with the extracted text editable before it reaches a prompt.
 - **Legacy import** — old `cv-studio.html` JSON (schema version 1) can be loaded and migrated.
 
 ## Requirements
@@ -29,7 +29,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>. The port is intentionally fixed: the browser stores the workspace folder handle in IndexedDB, which is scoped to the origin including the port. Changing ports silently loses the remembered workspace.
+Open <http://localhost:5173>. The port is intentionally fixed: the browser stores the workspace folder handle in IndexedDB, which is scoped to the origin including the port. Changing ports silently loses the remembered workspace. Use the same hostname too; `http://127.0.0.1:5173` is a different origin from `http://localhost:5173` and will not see the saved handle.
 
 1. Choose an empty folder as your workspace.
 2. Go to **Profile**, import your PDR, and fill in your name and contact details.

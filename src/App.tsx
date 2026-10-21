@@ -179,17 +179,33 @@ export default function App() {
       const handle = await pickWorkspaceDirectory();
       const granted = await verifyPermission(handle, "readwrite", true);
       if (!granted) throw new Error("Workspace permission was not granted.");
+      if (root && project) {
+        try {
+          await saveProject(root, project);
+        } catch {
+          // Switching folders should still work if the old folder is read-only.
+        }
+      }
       await saveHandle("workspace", handle);
+      // Clear the old workspace state before changing root so the profile
+      // autosave effect cannot write the previous profile into the new folder.
+      setLoading(true);
       setProject(null);
+      setProfile(null);
+      setSettings(null);
+      setProjects([]);
       setRoot(handle);
       setWorkspaceName(handle.name);
       setNeedsPermission(false);
       await hydrate(handle);
     } catch (error) {
       if ((error as DOMException).name !== "AbortError") {
-        setBootError((error as Error).message);
+        const message = (error as Error).message;
+        setBootError(message);
+        setSaveStatus({ state: "error", message });
       }
     } finally {
+      setLoading(false);
       setBusy(false);
     }
   };
@@ -201,11 +217,14 @@ export default function App() {
     try {
       const granted = await verifyPermission(root, "readwrite", true);
       if (!granted) throw new Error("Permission was not granted.");
+      setLoading(true);
       setNeedsPermission(false);
       await hydrate(root);
     } catch (error) {
       setBootError((error as Error).message);
+      setNeedsPermission(true);
     } finally {
+      setLoading(false);
       setBusy(false);
     }
   };
@@ -399,7 +418,7 @@ export default function App() {
             promptTemplate={promptTemplate}
             templateSource={templateSource}
             onSaveTemplate={saveTemplate}
-            onResetTemplate={() => void resetTemplate()}
+            onResetTemplate={resetTemplate}
             onReloadTemplate={() => void loadTemplate(root)}
             onChangeWorkspace={() => void chooseWorkspace()}
           />

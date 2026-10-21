@@ -34,7 +34,7 @@ const basicsSchema: Record<string, unknown> = {
     headline: str(120),
     contact: {
       type: "array",
-      minItems: 2,
+      minItems: 1,
       maxItems: 7,
       items: str(120, 1),
     },

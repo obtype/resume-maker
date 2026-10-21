@@ -5,6 +5,9 @@
   "type": "module",
   "description": "Local-first tailored CV workbench with swappable renderers.",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite --port 5173 --strictPort",
     "build": "tsc -b && vite build",

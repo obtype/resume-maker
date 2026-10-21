@@ -115,9 +115,12 @@ try {
   });
 
   await page.addInitScript((name) => {
+    let pickerCount = 0;
     window.showDirectoryPicker = async () => {
       const root = await navigator.storage.getDirectory();
-      return root.getDirectoryHandle(name, { create: true });
+      const folder = pickerCount === 0 ? name : `${name}-second`;
+      pickerCount += 1;
+      return root.getDirectoryHandle(folder, { create: true });
     };
   }, workspaceName);
 
@@ -257,6 +260,29 @@ try {
   assert(persisted.cvName.toLowerCase().includes("alex example"), `Persisted CV name was "${persisted.cvName}".`);
   assert(persisted.hasPdf, "The exported PDF was not written to the project folder.");
   assert(!persisted.projectJsonHasCv, "project.json must not duplicate CV content.");
+
+  await page.locator(".topnav button", { hasText: "Settings" }).click();
+  await page.getByRole("button", { name: "Change workspace folder" }).click();
+  await page.getByRole("heading", { name: "Applications", exact: true }).waitFor({ timeout: 15000 });
+
+  const switched = await page.evaluate(async (name) => {
+    const root = await navigator.storage.getDirectory();
+    const workspace = await root.getDirectoryHandle(`${name}-second`);
+    const profiles = await workspace.getDirectoryHandle("profiles");
+    const profileFile = await profiles.getFileHandle("default.json");
+    const profile = JSON.parse(await (await profileFile.getFile()).text());
+    const projects = await workspace.getDirectoryHandle("projects");
+    let projectCount = 0;
+    for await (const entry of projects.values()) {
+      if (entry.kind === "directory") projectCount += 1;
+    }
+    return { profileName: profile.basics.name, projectCount };
+  }, workspaceName);
+  assert(
+    switched.profileName === "",
+    `Switching workspaces leaked the old profile: "${switched.profileName}".`,
+  );
+  assert(switched.projectCount === 0, "A new workspace should not contain the old project.");
 
   assert(errors.length === 0, `Browser errors:\n${errors.join("\n")}`);
   console.log("Smoke test passed.");

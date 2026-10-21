@@ -82,7 +82,7 @@ interface CvStyle {
 | --- | --- |
 | `basics.name` | 1–80 chars |
 | `basics.headline` | ≤ 120 |
-| `basics.contact` | 2–7 items, each 1–120 |
+| `basics.contact` | 1–7 items, each 1–120 |
 | `summary` | 1–600 (schemas with summary) |
 | `sectionTitles.*` | ≤ 40 |
 | `education` | 1–3 entries; degree/school 1–140; meta ≤ 220 |
@@ -106,6 +106,8 @@ interface CvStyle {
 - supplies default section titles;
 - adds `summary` only for summary schemas;
 - adds `skills` to experience and PSO fields to projects only for `impact`.
+
+Loading `cv.json` from disk uses `normalizeStoredCv`, a superset normalization that preserves every schema-supported field (`summary`, per-role `skills`, and project `problem`/`solution`/`outcome`) even when the project's current renderer/schema does not use them. This means switching renderers or schemas is non-destructive: a classic-shaped CV opened with the impact schema keeps its content and simply shows empty impact-only fields until a new response is imported. Applying a validated LLM response is the explicit point where content is replaced with the selected schema's normalized shape.
 
 `validateCv(cv, schemaId)` then runs Ajv against the same schema and returns `{valid, data, errors, warnings}`. Warnings are advisory (for example, missing optional contact details); errors block applying the response.
 

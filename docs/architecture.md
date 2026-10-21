@@ -95,7 +95,7 @@ The host applies `pathSet(cv, path, text)` and stores `fieldHtml[path]` plus `fi
 ## Persistence
 
 - **IndexedDB** stores only the `FileSystemDirectoryHandle` for the workspace. It is origin-scoped.
-- **Workspace files** are the durable source of truth for projects, profiles, settings, prompts, responses, and PDFs.
+- **Workspace files** are the durable source of truth for projects, profiles, settings, prompts, responses, and PDFs. `cv.json` is loaded with a superset normalization so schema-specific fields are preserved when the user switches renderers or schema; applying a new LLM response is the explicit replacement point.
 - **React state** holds the active project. Autosave debounces writes (roughly 800 ms) and flushes when navigating/switching projects.
 - The workspace path itself is never known to the app; only the folder name is exposed by the browser.
 

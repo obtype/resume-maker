@@ -15,20 +15,22 @@ export function NewProjectModal({ open, busy, defaultRendererId, onClose, onCrea
   const [rendererId, setRendererId] = useState(defaultRendererId);
 
   useEffect(() => {
-    if (open) setRendererId(defaultRendererId);
+    if (!open) return;
+    setRendererId(defaultRendererId);
+    setTitle("");
+    setCompany("");
   }, [open, defaultRendererId]);
 
   if (!open) return null;
 
   const submit = () => {
+    if (busy) return;
     if (!title.trim() && !company.trim()) return;
     onCreate(title.trim(), company.trim(), rendererId);
-    setTitle("");
-    setCompany("");
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={() => { if (!busy) onClose(); }}>
       <div className="modal" onClick={(event) => event.stopPropagation()}>
         <h2>New application</h2>
         <p className="muted">

@@ -33,6 +33,7 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
   const [exporting, setExporting] = useState(false);
   const previewRef = useRef<CvPreviewHandle>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
+  const exportingRef = useRef(false);
   const filename = projectCvFilename(project, profile);
 
   useEffect(() => {
@@ -77,12 +78,14 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
 
   const changeRenderer = (id: string) => {
     const next = getRenderer(id);
-    const nextSchema = next.meta.schemas.includes(project.schemaId)
-      ? project.schemaId
-      : next.meta.schemas[0];
-    const styles = { ...project.styles };
-    if (!styles[id]) styles[id] = defaultStyle();
-    onChange((current) => ({ ...current, rendererId: id, schemaId: nextSchema, styles }));
+    onChange((current) => {
+      const nextSchema = next.meta.schemas.includes(current.schemaId)
+        ? current.schemaId
+        : next.meta.schemas[0];
+      const styles = { ...current.styles };
+      if (!styles[id]) styles[id] = defaultStyle();
+      return { ...current, rendererId: id, schemaId: nextSchema, styles };
+    });
     setPreviewKey((key) => key + 1);
   };
 
@@ -94,6 +97,8 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
   };
 
   const exportPdf = async () => {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
     setExporting(true);
     setStatus("Rendering PDF with headless Chrome…");
     let blob: Blob;
@@ -109,6 +114,7 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
       setStatus(
         `Automatic PDF export is unavailable (${(error as Error).message}). Opening the print dialog instead.`,
       );
+      exportingRef.current = false;
       setExporting(false);
       previewRef.current?.print(`${filename}.pdf`);
       return;
@@ -127,6 +133,7 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
         `Could not write the PDF into the project folder (${(error as Error).message}). Downloaded instead.`,
       );
     } finally {
+      exportingRef.current = false;
       setExporting(false);
     }
   };
@@ -228,7 +235,6 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
         <button className="tool" onClick={() => previewRef.current?.format("bold")} title="Bold"><b>B</b></button>
         <button className="tool" onClick={() => previewRef.current?.format("italic")} title="Italic"><i>I</i></button>
         <button className="tool" onClick={() => previewRef.current?.format("underline")} title="Underline"><u>U</u></button>
-        <button className="tool" onClick={() => previewRef.current?.format("insertUnorderedList")} title="Bullet list">• List</button>
         <button className="tool" onClick={() => previewRef.current?.format("removeFormat")} title="Clear formatting">Clear</button>
         <label className="toolbar-field compact">
           <span>Selection</span>

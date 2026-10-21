@@ -31,7 +31,12 @@ export function normalizeStyle(value: unknown): CvStyle {
     verticalScale: num(raw.verticalScale, 0.65, 0.4, 1.1),
     marginMm: num(raw.marginMm, 7, 3, 11),
     sidebarMm: num(raw.sidebarMm, 51, 42, 65),
-    accent: typeof raw.accent === "string" ? raw.accent : "#1f6fbf",
+    // Only allow a plain CSS color. The value is interpolated into a <style>
+    // block, so arbitrary text could otherwise break out of the declaration.
+    accent:
+      typeof raw.accent === "string" && /^#[0-9a-f]{3,8}$/i.test(raw.accent.trim())
+        ? raw.accent.trim()
+        : "#1f6fbf",
     fieldHtml: strMap(raw.fieldHtml),
     fieldText: strMap(raw.fieldText),
   };

@@ -80,7 +80,11 @@ function normalizeSkills(value: unknown): SkillGroup[] {
   });
 }
 
-function normalizeExperience(value: unknown, withSkills: boolean): ExperienceEntry[] {
+function normalizeExperience(
+  value: unknown,
+  withSkills: boolean,
+  includeEmpty = true,
+): ExperienceEntry[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => {
     const raw = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
@@ -92,12 +96,20 @@ function normalizeExperience(value: unknown, withSkills: boolean): ExperienceEnt
     };
     const blurb = asString(raw.blurb);
     if (blurb) entry.blurb = blurb;
-    if (withSkills) entry.skills = asStringArray(raw.skills);
+    if (withSkills && (includeEmpty || raw.skills !== undefined)) {
+      entry.skills = asStringArray(raw.skills);
+    }
     return entry;
   });
 }
 
-function normalizeProjects(value: unknown, pso: boolean): ProjectEntry[] {
+type ProjectMode = "bullets" | "pso" | "all";
+
+function normalizeProjects(
+  value: unknown,
+  mode: ProjectMode,
+  includeEmpty: boolean,
+): ProjectEntry[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => {
     const raw = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
@@ -108,15 +120,47 @@ function normalizeProjects(value: unknown, pso: boolean): ProjectEntry[] {
     };
     const blurb = asString(raw.blurb);
     if (blurb) entry.blurb = blurb;
-    if (pso) {
-      entry.problem = asString(raw.problem);
-      entry.solution = asString(raw.solution);
-      entry.outcome = asString(raw.outcome);
-    } else {
+    if (mode !== "pso" && (includeEmpty || raw.bullets !== undefined)) {
       entry.bullets = asStringArray(raw.bullets);
+    }
+    if (mode !== "bullets") {
+      for (const key of ["problem", "solution", "outcome"] as const) {
+        if (includeEmpty || raw[key] !== undefined) entry[key] = asString(raw[key]);
+      }
     }
     return entry;
   });
+}
+
+interface NormalizeOptions {
+  summary: boolean;
+  experienceSkills: boolean;
+  projectMode: ProjectMode;
+  /** Validation normalization supplies required empty fields; storage preserves only what exists. */
+  includeEmpty: boolean;
+}
+
+function normalizeCore(value: unknown, options: NormalizeOptions): CvContent {
+  const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const experience = normalizeExperience(
+    raw.experience,
+    options.experienceSkills,
+    options.includeEmpty,
+  );
+  const cv: CvContent = {
+    schemaVersion: 2,
+    basics: normalizeBasics(raw.basics),
+    sectionTitles: normalizeSectionTitles(raw.sectionTitles),
+    education: normalizeEducation(raw.education),
+    skills: normalizeSkills(raw.skills),
+    experience,
+    projects: normalizeProjects(raw.projects, options.projectMode, options.includeEmpty),
+    custom: normalizeExperience(raw.custom, false, options.includeEmpty),
+  };
+  if (options.summary && (options.includeEmpty || raw.summary !== undefined)) {
+    cv.summary = asString(raw.summary);
+  }
+  return cv;
 }
 
 /**
@@ -125,18 +169,25 @@ function normalizeProjects(value: unknown, pso: boolean): ProjectEntry[] {
  * values that actually matter.
  */
 export function normalizeCv(value: unknown, schemaId: string): CvContent {
-  const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   const schema = getSchema(schemaId);
-  const cv: CvContent = {
-    schemaVersion: 2,
-    basics: normalizeBasics(raw.basics),
-    sectionTitles: normalizeSectionTitles(raw.sectionTitles),
-    education: normalizeEducation(raw.education),
-    skills: normalizeSkills(raw.skills),
-    experience: normalizeExperience(raw.experience, schemaUsesExperienceSkills(schema.id)),
-    projects: normalizeProjects(raw.projects, schemaUsesProjectPso(schema.id)),
-    custom: normalizeExperience(raw.custom, false),
-  };
-  if (schemaAllowsSummary(schema.id)) cv.summary = asString(raw.summary);
-  return cv;
+  return normalizeCore(value, {
+    summary: schemaAllowsSummary(schema.id),
+    experienceSkills: schemaUsesExperienceSkills(schema.id),
+    projectMode: schemaUsesProjectPso(schema.id) ? "pso" : "bullets",
+    includeEmpty: true,
+  });
+}
+
+/**
+ * Normalization for cv.json loaded from disk. It preserves fields from every
+ * supported schema so switching renderers/schemas does not silently discard
+ * impact summaries, per-role skills, or Problem / Solution / Outcome data.
+ */
+export function normalizeStoredCv(value: unknown): CvContent {
+  return normalizeCore(value, {
+    summary: true,
+    experienceSkills: true,
+    projectMode: "all",
+    includeEmpty: false,
+  });
 }

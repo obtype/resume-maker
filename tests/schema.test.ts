@@ -3,7 +3,8 @@ import { CV_SCHEMAS, createEmptyCv } from "../src/core/cv/schema";
 import { sampleCv } from "../src/core/cv/sample";
 import { validateCv } from "../src/core/cv/validate";
 import { migrateLegacyCv } from "../src/core/cv/migrate";
-import { normalizeCv } from "../src/core/cv/normalize";
+import { normalizeCv, normalizeStoredCv } from "../src/core/cv/normalize";
+import { normalizeStyle } from "../src/core/style";
 
 describe("CV schemas", () => {
   for (const schemaId of Object.keys(CV_SCHEMAS)) {
@@ -59,6 +60,24 @@ describe("CV schemas", () => {
     expect(createEmptyCv("classic").summary).toBeUndefined();
     expect(createEmptyCv("classic-summary").summary).toBe("");
     expect(createEmptyCv("impact").summary).toBe("");
+  });
+
+  it("preserves fields from every schema when loading stored content", () => {
+    const impact = normalizeStoredCv(sampleCv("impact"));
+    expect(impact.summary).toBeTruthy();
+    expect(impact.experience[0].skills?.length).toBeGreaterThan(0);
+    expect(impact.projects[0].problem).toBeTruthy();
+    expect(impact.projects[0].outcome).toBeTruthy();
+
+    const classic = normalizeStoredCv(sampleCv("classic"));
+    expect(classic.summary).toBeUndefined();
+    expect(classic.experience[0].skills).toBeUndefined();
+    expect(classic.projects[0].problem).toBeUndefined();
+  });
+
+  it("rejects CSS injection in the style accent", () => {
+    expect(normalizeStyle({ accent: "red;} body { display: none }" }).accent).toBe("#1f6fbf");
+    expect(normalizeStyle({ accent: "#12abef" }).accent).toBe("#12abef");
   });
 
   it("migrates the legacy cv-studio format and its style", () => {
