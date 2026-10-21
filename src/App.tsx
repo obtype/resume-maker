@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Profile, Project, ProjectSummary, Settings } from "./core/project";
 import { Layout, type SaveStatus } from "./components/Layout";
 import { NewProjectModal } from "./components/NewProjectModal";
@@ -53,6 +53,9 @@ export default function App() {
   const [templateSource, setTemplateSource] = useState<TemplateSource>("fallback");
   const [showNew, setShowNew] = useState(false);
   const [creating, setCreating] = useState(false);
+  const opToken = useRef(0);
+  const rootRef = useRef<FileSystemDirectoryHandle | null>(null);
+  rootRef.current = root;
 
   const loadTemplate = async (workspace: FileSystemDirectoryHandle) => {
     try {
@@ -76,19 +79,25 @@ export default function App() {
   };
 
   const hydrate = async (workspace: FileSystemDirectoryHandle) => {
+    const token = ++opToken.current;
     const initialized = await initializeWorkspace(workspace);
+    if (token !== opToken.current) return;
     setSettings(initialized.settings);
     setProfile(initialized.profile);
     const summaries = await loadProjectSummaries(workspace);
+    if (token !== opToken.current) return;
     setProjects(summaries);
     await loadTemplate(workspace);
+    if (token !== opToken.current) return;
     const lastId = initialized.settings.lastProjectId;
     if (lastId && summaries.some((summary) => summary.id === lastId)) {
       try {
         const loaded = await loadProject(workspace, lastId, initialized.profile);
+        if (token !== opToken.current) return;
         setProject(loaded);
         setView("project");
       } catch {
+        if (token !== opToken.current) return;
         setView("projects");
       }
     } else {
@@ -173,6 +182,7 @@ export default function App() {
   }, [profile, root]);
 
   const chooseWorkspace = async () => {
+    opToken.current += 1;
     setBusy(true);
     setBootError("");
     try {
@@ -194,6 +204,8 @@ export default function App() {
       setProfile(null);
       setSettings(null);
       setProjects([]);
+      setShowNew(false);
+      setCreating(false);
       setRoot(handle);
       setWorkspaceName(handle.name);
       setNeedsPermission(false);
@@ -212,6 +224,7 @@ export default function App() {
 
   const reconnect = async () => {
     if (!root) return;
+    opToken.current += 1;
     setBusy(true);
     setBootError("");
     try {
@@ -229,6 +242,11 @@ export default function App() {
     }
   };
 
+  const openNewProject = () => {
+    setCreating(false);
+    setShowNew(true);
+  };
+
   const updateProject = (updater: (current: Project) => Project) => {
     setProject((current) => {
       if (!current) return current;
@@ -238,49 +256,65 @@ export default function App() {
 
   const openProject = async (id: string) => {
     if (!root || !profile) return;
+    const workspace = root;
+    const token = ++opToken.current;
+    setCreating(false);
+    setShowNew(false);
     try {
       if (project && project.id !== id) {
-        await saveProject(root, project);
+        await saveProject(workspace, project);
       }
-      const loaded = await loadProject(root, id, profile);
+      if (token !== opToken.current || rootRef.current !== workspace) return;
+      const loaded = await loadProject(workspace, id, profile);
+      if (token !== opToken.current || rootRef.current !== workspace) return;
       setProject(loaded);
       setView("project");
       if (settings) {
         const next = { ...settings, lastProjectId: id };
         setSettings(next);
-        void saveSettings(root, next);
+        void saveSettings(workspace, next);
       }
     } catch (error) {
-      setSaveStatus({ state: "error", message: (error as Error).message });
+      if (token === opToken.current) {
+        setSaveStatus({ state: "error", message: (error as Error).message });
+      }
     }
   };
 
   const newProject = async (title: string, company: string, rendererId: string) => {
     if (!root || !profile) return;
+    const workspace = root;
+    const token = ++opToken.current;
     setCreating(true);
     try {
-      if (project) await saveProject(root, project);
+      if (project) await saveProject(workspace, project);
+      if (token !== opToken.current || rootRef.current !== workspace) return;
       const renderer = getRenderer(rendererId);
-      const created = await createProject(root, {
+      const created = await createProject(workspace, {
         profile,
         jobTitle: title,
         company,
         rendererId,
         schemaId: renderer.meta.schemas[0],
       });
+      if (token !== opToken.current || rootRef.current !== workspace) return;
       setProject(created);
       setView("project");
       setShowNew(false);
-      setProjects(await loadProjectSummaries(root));
+      const summaries = await loadProjectSummaries(workspace);
+      if (token !== opToken.current || rootRef.current !== workspace) return;
+      setProjects(summaries);
       if (settings) {
         const next = { ...settings, lastProjectId: created.id };
         setSettings(next);
-        void saveSettings(root, next);
+        void saveSettings(workspace, next);
       }
     } catch (error) {
-      setSaveStatus({ state: "error", message: (error as Error).message });
+      if (token === opToken.current) {
+        setSaveStatus({ state: "error", message: (error as Error).message });
+      }
     } finally {
-      setCreating(false);
+      if (token === opToken.current) setCreating(false);
     }
   };
 
@@ -395,14 +429,14 @@ export default function App() {
         view={view}
         saveStatus={saveStatus}
         onOpenProject={(id) => void openProject(id)}
-        onNewProject={() => setShowNew(true)}
+        onNewProject={openNewProject}
         onNavigate={navigate}
       >
         {view === "projects" && (
           <ProjectsView
             projects={projects}
             onOpen={(id) => void openProject(id)}
-            onNew={() => setShowNew(true)}
+            onNew={openNewProject}
           />
         )}
         {view === "profile" && (

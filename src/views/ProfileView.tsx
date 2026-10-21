@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Profile } from "../core/project";
 
 interface Props {
@@ -35,8 +35,16 @@ function ContactEditor({
 
 export function ProfileView({ profile, onChange, onSave }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const importFile = async (file: File | undefined) => {
     if (!file) return;
@@ -45,6 +53,7 @@ export function ProfileView({ profile, onChange, onSave }: Props) {
     try {
       const { importPdrFile } = await import("../core/profile/docx");
       const imported = await importPdrFile(file);
+      if (!mountedRef.current) return;
       onChange((current) => ({
         ...current,
         pdr: {
@@ -55,9 +64,9 @@ export function ProfileView({ profile, onChange, onSave }: Props) {
         },
       }));
     } catch (importError) {
-      setError((importError as Error).message);
+      if (mountedRef.current) setError((importError as Error).message);
     } finally {
-      setImporting(false);
+      if (mountedRef.current) setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
     }
   };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Profile, Project } from "../../core/project";
 import { buildCvPrompt, estimateTokens, promptWarnings } from "../../core/prompt/builder";
 import { getSchema } from "../../core/cv/schema";
@@ -34,6 +34,8 @@ export function PromptStage({
   const [baseline, setBaseline] = useState(project.promptText || generated);
   const [copied, setCopied] = useState(false);
   const [status, setStatus] = useState("");
+  const projectIdRef = useRef(project.id);
+  projectIdRef.current = project.id;
 
   useEffect(() => {
     const initial = project.promptText || generated;
@@ -64,14 +66,18 @@ export function PromptStage({
   };
 
   const copy = async () => {
+    const targetId = project.id;
     try {
       await navigator.clipboard.writeText(draft);
+      if (projectIdRef.current !== targetId) return;
       savePrompt(draft);
       setCopied(true);
       setStatus("Copied. Paste it into your LLM, then bring the JSON back to the Import stage.");
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
-      setStatus("Clipboard access failed. Select the prompt and copy it manually.");
+      if (projectIdRef.current === targetId) {
+        setStatus("Clipboard access failed. Select the prompt and copy it manually.");
+      }
     }
   };
 
@@ -170,6 +176,9 @@ export function PromptStage({
         rows={26}
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          if (draft !== (project.promptText ?? "")) savePrompt(draft);
+        }}
         spellCheck={false}
       />
 

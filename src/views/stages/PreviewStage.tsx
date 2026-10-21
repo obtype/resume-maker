@@ -34,6 +34,10 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
   const previewRef = useRef<CvPreviewHandle>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
   const exportingRef = useRef(false);
+  const projectIdRef = useRef(project.id);
+  const schemaIdRef = useRef(project.schemaId);
+  projectIdRef.current = project.id;
+  schemaIdRef.current = project.schemaId;
   const filename = projectCvFilename(project, profile);
 
   useEffect(() => {
@@ -145,13 +149,16 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
 
   const loadCvJson = async (file: File | undefined) => {
     if (!file) return;
+    const targetId = project.id;
+    const targetSchema = project.schemaId;
     try {
       const parsed = JSON.parse(await file.text());
-      const migrated = migrateCv(parsed, project.schemaId);
-      const check = validateCv(migrated.cv, project.schemaId);
+      if (projectIdRef.current !== targetId || schemaIdRef.current !== targetSchema) return;
+      const migrated = migrateCv(parsed, targetSchema);
+      const check = validateCv(migrated.cv, targetSchema);
       if (!check.valid) {
         setStatus(
-          `CV JSON does not match schema "${project.schemaId}": ${check.errors
+          `CV JSON does not match schema "${targetSchema}": ${check.errors
             .map((issue) => `${issue.path} ${issue.message}`)
             .join("; ")}`,
         );
@@ -318,6 +325,7 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
       {status && <p className="callout">{status}</p>}
 
       <CvPreview
+        key={project.id}
         ref={previewRef}
         renderer={renderer}
         cv={project.cv}

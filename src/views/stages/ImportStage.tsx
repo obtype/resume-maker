@@ -18,6 +18,10 @@ export function ImportStage({ project, onChange, onApplied }: Props) {
   const [status, setStatus] = useState("");
   const responseFileRef = useRef<HTMLInputElement>(null);
   const cvFileRef = useRef<HTMLInputElement>(null);
+  const projectIdRef = useRef(project.id);
+  const schemaIdRef = useRef(project.schemaId);
+  projectIdRef.current = project.id;
+  schemaIdRef.current = project.schemaId;
 
   useEffect(() => {
     setRaw(project.rawResponse || "");
@@ -68,10 +72,13 @@ export function ImportStage({ project, onChange, onApplied }: Props) {
 
   const loadCvFile = async (file: File | undefined) => {
     if (!file) return;
+    const targetId = project.id;
+    const targetSchema = project.schemaId;
     try {
       const parsedFile = JSON.parse(await file.text());
-      const migrated = migrateCv(parsedFile, project.schemaId);
-      const check = validateCv(migrated.cv, project.schemaId);
+      if (projectIdRef.current !== targetId || schemaIdRef.current !== targetSchema) return;
+      const migrated = migrateCv(parsedFile, targetSchema);
+      const check = validateCv(migrated.cv, targetSchema);
       setValidation(check);
       setParsed({ ok: true, data: migrated.cv, extracted: "" });
       if (!check.valid) {
@@ -123,7 +130,11 @@ export function ImportStage({ project, onChange, onApplied }: Props) {
             accept=".txt,.json,.md,text/plain,application/json"
             onChange={async (event) => {
               const file = event.target.files?.[0];
-              if (file) setRaw(await file.text());
+              const targetId = project.id;
+              if (file) {
+                const text = await file.text();
+                if (projectIdRef.current === targetId) setRaw(text);
+              }
               if (responseFileRef.current) responseFileRef.current.value = "";
             }}
           />

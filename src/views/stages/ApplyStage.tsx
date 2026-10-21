@@ -10,13 +10,17 @@ interface Props {
 
 export function ApplyStage({ project, profile, onChange, onNext }: Props) {
   const referenceRef = useRef<HTMLInputElement>(null);
+  const projectIdRef = useRef(project.id);
+  projectIdRef.current = project.id;
 
   const setJob = (patch: Partial<Project["job"]>) =>
     onChange((current) => ({ ...current, job: { ...current.job, ...patch } }));
 
   const importReference = async (file: File | undefined) => {
     if (!file) return;
+    const targetId = project.id;
     const text = await file.text();
+    if (projectIdRef.current !== targetId) return;
     setJob({ referenceCv: text });
     if (referenceRef.current) referenceRef.current.value = "";
   };
