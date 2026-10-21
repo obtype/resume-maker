@@ -102,8 +102,8 @@ The current implementation requires the local Node server for automatic export. 
 - Add visual regression snapshots of rendered pages (careful: do not commit real PII).
 - Test a clipped CV and assert the overflow warning.
 - Test reset-to-bundled prompt and workspace override precedence.
-- Test workspace switching does not write a project into the wrong folder.
-- Add a test that `project.json` never contains `cv` content.
+- Add a test for schema switching: impact fields survive a classic round trip.
+- Add a test that `project.json` never contains `cv` content in a future refactor (the smoke test already asserts it).
 
 ## 9. Privacy and trust
 
