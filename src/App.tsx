@@ -340,7 +340,31 @@ export default function App() {
   }
 
   if (!profile || !settings) {
-    return <div className="boot-screen"><div className="spinner" />Loading workspace…</div>;
+    return (
+      <div className="onboarding">
+        <div className="onboarding-card">
+          <h1>Could not open workspace</h1>
+          <p className="lead">{workspaceName ? `CV Studio could not read “${workspaceName}”.` : "The workspace could not be loaded."}</p>
+          {bootError && <p className="callout error">{bootError}</p>}
+          <div className="row">
+            <button className="primary" onClick={() => void chooseWorkspace()} disabled={busy}>
+              Choose a different folder
+            </button>
+            {root && (
+              <button
+                className="ghost"
+                onClick={() =>
+                  void hydrate(root).catch((error: Error) => setBootError(error.message))
+                }
+                disabled={busy}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -374,7 +398,7 @@ export default function App() {
             workspaceName={workspaceName}
             promptTemplate={promptTemplate}
             templateSource={templateSource}
-            onSaveTemplate={(text) => void saveTemplate(text)}
+            onSaveTemplate={saveTemplate}
             onResetTemplate={() => void resetTemplate()}
             onReloadTemplate={() => void loadTemplate(root)}
             onChangeWorkspace={() => void chooseWorkspace()}

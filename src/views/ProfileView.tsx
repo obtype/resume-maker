@@ -178,10 +178,16 @@ export function ProfileView({ profile, onChange, onSave }: Props) {
               rows={20}
               value={profile.pdr.markdown}
               onChange={(event) =>
-                onChange((current) => ({
-                  ...current,
-                  pdr: { ...current.pdr, markdown: event.target.value },
-                }))
+                onChange((current) => {
+                  const markdown = event.target.value;
+                  const pdr = { ...current.pdr, markdown };
+                  if (!pdr.sourceName && markdown.trim()) {
+                    pdr.sourceName = "Pasted text";
+                    pdr.sourceKind = "pasted";
+                    pdr.importedAt = new Date().toISOString();
+                  }
+                  return { ...current, pdr };
+                })
               }
               placeholder="Import a file, or paste your PDR text here."
             />

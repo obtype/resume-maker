@@ -7,7 +7,7 @@ interface Props {
   workspaceName: string;
   promptTemplate: string;
   templateSource: "bundled" | "override" | "fallback";
-  onSaveTemplate: (text: string) => void;
+  onSaveTemplate: (text: string) => Promise<void>;
   onResetTemplate: () => void;
   onReloadTemplate: () => void;
   onChangeWorkspace: () => void;
@@ -24,6 +24,7 @@ export function SettingsView({
 }: Props) {
   const [draft, setDraft] = useState(promptTemplate);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     setDraft(promptTemplate);
@@ -38,10 +39,15 @@ export function SettingsView({
     [],
   );
 
-  const save = () => {
-    onSaveTemplate(draft);
-    setSavedFlash(true);
-    window.setTimeout(() => setSavedFlash(false), 1500);
+  const save = async () => {
+    setSaveError("");
+    try {
+      await onSaveTemplate(draft);
+      setSavedFlash(true);
+      window.setTimeout(() => setSavedFlash(false), 1500);
+    } catch (error) {
+      setSaveError((error as Error).message);
+    }
   };
 
   return (
@@ -85,10 +91,11 @@ export function SettingsView({
           spellCheck={false}
         />
         <div className="row">
-          <button className="primary" onClick={save}>Save override</button>
+          <button className="primary" onClick={() => void save()}>Save override</button>
           <button className="secondary" onClick={onReloadTemplate}>Reload</button>
           <button className="ghost" onClick={onResetTemplate}>Use bundled default</button>
           {savedFlash && <span className="muted">Saved.</span>}
+          {saveError && <span className="error-text">Save failed: {saveError}</span>}
         </div>
         <details className="details">
           <summary>Available placeholders</summary>

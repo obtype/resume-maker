@@ -171,7 +171,7 @@ custom.0.bullets.1
 }
 ```
 
-The PDR is stored as Markdown after import. `.docx` goes through Mammoth (to HTML) and Turndown (to Markdown); the text area remains editable, and edits are saved as `sourceKind: "pasted"` if the user changes the text after import.
+The PDR is stored as Markdown after import. `.docx` goes through Mammoth (to HTML) and Turndown (to Markdown); the text area remains editable. Editing imported text keeps its source metadata (`sourceName`, `sourceKind`, `importedAt`) so provenance is not lost; typing into an empty PDR records `sourceName: "Pasted text"` and `sourceKind: "pasted"` on the first non-empty edit.
 
 ## Settings file
 

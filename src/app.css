@@ -536,6 +536,10 @@ input[type="file"] {
 .callout.warn .badge {
   margin-left: 8px;
 }
+.error-text {
+  color: #ffb3b3;
+  font-size: 13px;
+}
 
 /* ---------- Onboarding ---------- */
 .onboarding {
