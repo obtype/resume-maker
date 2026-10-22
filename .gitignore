@@ -9,3 +9,4 @@ workspace/
 .vite/
 coverage/
 *.tsbuildinfo
+todo.md

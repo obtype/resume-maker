@@ -4,6 +4,20 @@ CV Studio is a local-first, static + local-Node application for generating tailo
 
 Read `README.md` for the user workflow and `docs/` for the detailed contracts. This file is the entrypoint for future agents.
 
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are local markdown under `.scratch/<feature>/` — `spec.md` plus numbered tickets in `issues/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles are used verbatim (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` at the repo root and ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+
 ## Commands
 
 ```bash
