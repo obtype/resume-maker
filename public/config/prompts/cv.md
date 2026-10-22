@@ -20,6 +20,7 @@ Create a tailored CV for the candidate using the source material below. The CV m
 10. Use the date format "Month YYYY – Month YYYY" (en dash) or a single year where only a year is known. Use an empty string when no date is known.
 11. Do not add fields that are not in the schema. Do not wrap the object in an array.
 12. The final output must be parseable by JSON.parse without repair.
+13. Write URLs as bare URLs (`https://example.com`), never as markdown links. Put each contact detail in its own contact entry.
 
 # CANDIDATE BASICS
 

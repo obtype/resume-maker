@@ -1,7 +1,7 @@
 import type { CvSchemaDef } from "../cv/schema";
 import type { Profile, Project } from "../project";
 
-export const PROMPT_VERSION = "2026-10-21.1";
+export const PROMPT_VERSION = "2026-10-22.1";
 export const BUNDLED_PROMPT_URL = `${import.meta.env.BASE_URL}config/prompts/cv.md`;
 
 export const FALLBACK_PROMPT_TEMPLATE = `# ROLE

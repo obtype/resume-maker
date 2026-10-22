@@ -4,10 +4,14 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The canonical prompt template includes a rule that URLs are written bare — no markdown link syntax — and that each contact detail is its own entry.
-- [ ] The rule sits with the existing "JSON only / no invented facts" writing rules rather than in a new section of its own.
-- [ ] The prompt test asserts the rule is present, alongside the existing placeholder assertions.
-- [ ] Existing workspace prompt overrides are unaffected, and the renderer still tolerates markdown links when they appear.
-- [ ] `npm test` passes.
+- [x] The canonical prompt template includes a rule that URLs are written bare — no markdown link syntax — and that each contact detail is its own entry.
+- [x] The rule sits with the existing "JSON only / no invented facts" writing rules rather than in a new section of its own.
+- [x] The prompt test asserts the rule is present, alongside the existing placeholder assertions.
+- [x] Existing workspace prompt overrides are unaffected, and the renderer still tolerates markdown links when they appear.
+- [x] `npm test` passes.
+
+## Notes
+
+- Added rule 13 to the existing `# ABSOLUTE RULES` block. `PROMPT_VERSION` bumped to `2026-10-22.1`.

@@ -80,6 +80,13 @@ describe("prompt builder", () => {
     expect(impact).toContain("skills");
   });
 
+  it("asks for bare URLs and one contact detail per entry", () => {
+    const lower = template.toLowerCase();
+    expect(lower).toContain("bare url");
+    expect(lower).toContain("markdown link");
+    expect(lower).toContain("each contact detail");
+  });
+
   it("warns about missing inputs", () => {
     const { profile, project } = fixtures();
     const warnings = promptWarnings(
