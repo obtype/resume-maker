@@ -65,7 +65,7 @@ A renderer may support several schemas. The host selects the first as the defaul
 
 | Helper | Use |
 | --- | --- |
-| `ctx.field(path, value)` | Wrap an editable value. Returns `<span data-field="path">…</span>`, applies saved rich HTML if its plain text still matches, and escapes otherwise. |
+| `ctx.field(path, value)` | Wrap an editable value. Returns `<span data-field="path">…</span>`, applies saved rich HTML if its plain text still matches, and escapes otherwise. Recognised links in the value become anchors with a validated `http(s)` or `mailto` target. |
 | `ctx.esc(value)` | Escape non-editable text (labels, computed strings). |
 | `ctx.nl2br(value)` | Escape text and turn newlines into `<br>` for non-editable multi-line values. |
 
@@ -266,6 +266,7 @@ Do not paste real PII into an external LLM when generating a renderer. Use the f
 ## Common pitfalls
 
 - **Using raw values in the template:** model output could contain `<script>`. Always use `ctx.field` for CV values or `ctx.esc` for fixed strings.
+- **Building your own anchors:** link recognition belongs to `ctx.field`; a renderer that parses URLs itself will drift from the shared rules and can emit unsafe targets.
 - **Putting `contenteditable` in the renderer:** editing is a host concern; duplicates and state will break.
 - **Adding a summary to `classic`:** the classic schema forbids it. Use `classic-summary` or `impact`.
 - **Reading `entry.bullets` in `impact`:** impact projects use `problem` / `solution` / `outcome`; classic projects use bullets. Branch on the schema or write a renderer for one schema.

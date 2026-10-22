@@ -16,6 +16,12 @@ body {
 body.cv-editing [data-field] {
   cursor: text;
 }
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 0.06em;
+  text-underline-offset: 0.14em;
+}
 body.cv-editing [data-field]:hover {
   outline: 1px dashed #69a9e8;
   outline-offset: 2px;

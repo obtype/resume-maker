@@ -1,21 +1,9 @@
 import type { CvStyle, RenderContext } from "../cv/types";
+import { esc, nl2br } from "./escape";
+import { linkifyText } from "./link";
 import { sanitizeSavedHtml } from "./sanitize";
 
-const ESCAPES: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-export function esc(value: unknown): string {
-  return String(value ?? "").replace(/[&<>"']/g, (char) => ESCAPES[char]);
-}
-
-export function nl2br(value: unknown): string {
-  return esc(value).replace(/\r?\n/g, "<br>");
-}
+export { esc, nl2br };
 
 /**
  * Builds the helper object handed to renderers. Renderers never handle saved
@@ -30,7 +18,9 @@ export function createRenderContext(style: CvStyle): RenderContext {
     const content =
       saved != null && savedText === plain
         ? sanitizeSavedHtml(saved)
-        : nl2br(String(value ?? "").replace(/\u00a0/g, " ").trim());
+        : linkifyText(String(value ?? "").replace(/\u00a0/g, " ").trim(), {
+            allowBareDomain: path.startsWith("basics.contact."),
+          });
     return `<span data-field="${esc(path)}">${content}</span>`;
   };
   return { esc, field, nl2br };

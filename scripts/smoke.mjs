@@ -44,7 +44,12 @@ const sampleCv = {
   basics: {
     name: "Alex Example",
     headline: "Computer Vision Engineer",
-    contact: ["alex@example.com", "+1 555 0100", "Berlin, Germany"],
+    contact: [
+      "alex@example.com",
+      "+1 555 0100",
+      "[github.com/example](https://www.google.com/search?q=https%3A%2F%2Fgithub.com%2Fexample)",
+      "Berlin, Germany",
+    ],
   },
   sectionTitles: {
     education: "Education",
@@ -196,6 +201,19 @@ try {
   const renderedRole = await frame.locator('[data-field="experience.0.role"]').innerText();
   assert(renderedRole.includes("Machine Learning Intern"), `Preview role was "${renderedRole}".`);
 
+  const contactLink = frame.locator('a[href="https://github.com/example"]');
+  assert((await contactLink.count()) === 1, "Contact profile link did not render as an anchor.");
+  const contactLabel = await frame.locator('[data-field="basics.contact.2"]').innerText();
+  assert(
+    contactLabel.trim() === "github.com/example",
+    `Contact link label was "${contactLabel}".`,
+  );
+  const previewText = await frame.locator("body").innerText();
+  assert(
+    !previewText.includes("[github.com/example]"),
+    "The raw markdown link was rendered literally in the preview.",
+  );
+
   const editable = await frame.locator('[data-field="basics.name"]').getAttribute("contenteditable");
   assert(editable === "true", "Preview fields are not editable by default.");
   const clippedWarnings = await page
@@ -260,6 +278,14 @@ try {
   assert(persisted.cvName.toLowerCase().includes("alex example"), `Persisted CV name was "${persisted.cvName}".`);
   assert(persisted.hasPdf, "The exported PDF was not written to the project folder.");
   assert(!persisted.projectJsonHasCv, "project.json must not duplicate CV content.");
+
+  const pdfBytes = Buffer.from(persisted.pdfBase64, "base64").toString("latin1");
+  assert(pdfBytes.includes("/URI"), "The exported PDF has no link annotations.");
+  assert(
+    pdfBytes.includes("https://github.com/example"),
+    "The exported PDF does not link the contact profile URL.",
+  );
+  assert(pdfBytes.length > 1000, "The exported PDF looks empty.");
 
   await page.locator(".topnav button", { hasText: "Settings" }).click();
   await page.getByRole("button", { name: "Change workspace folder" }).click();

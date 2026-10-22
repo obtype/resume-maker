@@ -1,4 +1,6 @@
-const ALLOWED_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "BR", "SPAN", "DIV", "P"]);
+import { resolveAnchorTarget } from "./link";
+
+const ALLOWED_TAGS = new Set(["B", "STRONG", "I", "EM", "U", "BR", "SPAN", "DIV", "P", "A"]);
 
 /**
  * Sanitizes rich text that is about to be injected by a renderer. The editing
@@ -12,6 +14,11 @@ export function sanitizeSavedHtml(html: string): string {
     return source
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<a\b([^>]*)>/gi, (_match, attributes: string) => {
+        const href = /\shref\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attributes);
+        const target = href ? resolveAnchorTarget(href[2] ?? href[3] ?? href[4] ?? "") : null;
+        return target ? `<a href="${target.replace(/"/g, "&quot;")}">` : "<a>";
+      })
       .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
       .replace(/javascript\s*:/gi, "");
   }
@@ -31,7 +38,11 @@ export function sanitizeSavedHtml(html: string): string {
         continue;
       }
       for (const attribute of Array.from(element.attributes)) {
-        if (tag === "SPAN" && attribute.name === "style") {
+        if (tag === "A" && attribute.name === "href") {
+          const target = resolveAnchorTarget(attribute.value);
+          if (target) element.setAttribute("href", target);
+          else element.removeAttribute("href");
+        } else if (tag === "SPAN" && attribute.name === "style") {
           const match = attribute.value.trim().match(/^font-size\s*:\s*([\d.]+pt);?$/i);
           if (match) element.setAttribute("style", `font-size: ${match[1]}pt`);
           else element.removeAttribute("style");
