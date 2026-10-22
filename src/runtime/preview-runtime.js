@@ -24,6 +24,21 @@
       .trim();
   }
 
+  /** Mirrors resolveAnchorTarget in src/core/render/link.ts. */
+  function anchorTarget(value) {
+    var raw = String(value == null ? "" : value).trim();
+    if (!/^(https?:|mailto:)/i.test(raw)) return null;
+    try {
+      var url = new URL(raw);
+      if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") {
+        return url.href;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
   function sanitizeHtml(html) {
     var template = document.createElement("template");
     template.innerHTML = String(html || "");
@@ -37,32 +52,56 @@
       SPAN: true,
       DIV: true,
       P: true,
+      A: true,
     };
-    function walk(node) {
-      Array.prototype.slice.call(node.childNodes).forEach(function (child) {
-        if (child.nodeType === 3) return;
-        if (child.nodeType !== 1) {
-          child.remove();
+    function unwrap(element, parent) {
+      while (element.firstChild) {
+        var moved = element.firstChild;
+        parent.insertBefore(moved, element);
+        cleanElement(moved, parent);
+      }
+      element.remove();
+    }
+    function cleanElement(element, parent) {
+      if (element.nodeType === 3) return;
+      if (element.nodeType !== 1) {
+        element.remove();
+        return;
+      }
+      var tag = element.tagName.toUpperCase();
+      if (!allowed[tag]) {
+        unwrap(element, parent);
+        return;
+      }
+      if (tag === "A") {
+        var target = anchorTarget(element.getAttribute("href") || "");
+        if (!target) {
+          // An unsafe or missing target renders as plain text, not a dead link.
+          unwrap(element, parent);
           return;
         }
-        var tag = child.tagName.toUpperCase();
-        if (!allowed[tag]) {
-          while (child.firstChild) node.insertBefore(child.firstChild, child);
-          child.remove();
-          return;
-        }
-        Array.prototype.slice.call(child.attributes).forEach(function (attr) {
+        Array.prototype.slice.call(element.attributes).forEach(function (attr) {
+          element.removeAttribute(attr.name);
+        });
+        element.setAttribute("href", target);
+      } else {
+        Array.prototype.slice.call(element.attributes).forEach(function (attr) {
           if (tag === "SPAN" && attr.name === "style") {
             var ok = /^font-size\s*:\s*[\d.]+pt;?$/i.test(attr.value.trim());
-            if (!ok) child.removeAttribute(attr.name);
+            if (!ok) element.removeAttribute(attr.name);
           } else {
-            child.removeAttribute(attr.name);
+            element.removeAttribute(attr.name);
           }
         });
-        walk(child);
+      }
+      cleanChildren(element);
+    }
+    function cleanChildren(parent) {
+      Array.prototype.slice.call(parent.childNodes).forEach(function (child) {
+        cleanElement(child, parent);
       });
     }
-    walk(template.content);
+    cleanChildren(template.content);
     return template.innerHTML;
   }
 
@@ -188,6 +227,19 @@
   }, true);
 
   document.addEventListener("selectionchange", rememberSelection);
+
+  // In editing mode the stylesheet keeps anchors out of the pointer's way so a
+  // click places the caret. Outside editing mode the preview must not navigate
+  // itself when a link is clicked; open the target in a new tab instead.
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    var anchor = target && target.closest ? target.closest("a[href]") : null;
+    if (!anchor) return;
+    event.preventDefault();
+    if (editing) return;
+    var href = anchorTarget(anchor.getAttribute("href"));
+    if (href) window.open(href, "_blank", "noopener");
+  });
 
   window.addEventListener("message", function (event) {
     if (event.source !== window.parent) return;

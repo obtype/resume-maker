@@ -104,7 +104,25 @@ try {
   const context = await browser.newContext({
     permissions: ["clipboard-read", "clipboard-write"],
   });
+  await context.route("https://github.com/**", (route) =>
+    route.fulfill({ status: 200, contentType: "text/plain", body: "profile" }),
+  );
   const page = await context.newPage();
+
+  // Mark the current preview document, then wait until a fresh one replaces it.
+  async function refreshPreview() {
+    await page.evaluate(() => {
+      const iframe = document.querySelector("iframe.cv-preview-frame");
+      if (iframe?.contentDocument?.body) iframe.contentDocument.body.dataset.smokeStale = "1";
+    });
+    await page.getByRole("button", { name: "Refresh preview" }).click();
+    await page.waitForFunction(() => {
+      const iframe = document.querySelector("iframe.cv-preview-frame");
+      const body = iframe?.contentDocument?.body;
+      return Boolean(body && !body.dataset.smokeStale);
+    });
+  }
+
   const errors = [];
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
@@ -214,6 +232,140 @@ try {
     "The raw markdown link was rendered literally in the preview.",
   );
 
+  // Editing a linked field: the click lands in the field, the caret moves, and
+  // the anchor must survive the runtime sanitizer with its original target.
+  const pagesBeforeEdit = context.pages().length;
+  await frame.locator('[data-field="basics.contact.2"]').click();
+  await page.waitForTimeout(300);
+  assert(
+    context.pages().length === pagesBeforeEdit,
+    "Clicking a link while editing opened a new tab.",
+  );
+  const caretInsideLinkField = await page.evaluate(() => {
+    const iframe = document.querySelector("iframe.cv-preview-frame");
+    const doc = iframe?.contentDocument;
+    const field = doc?.querySelector('[data-field="basics.contact.2"]');
+    return Boolean(field && doc.activeElement && field.contains(doc.activeElement));
+  });
+  assert(caretInsideLinkField, "Clicking a link while editing did not place the caret in the field.");
+  // Put the caret at the end of the link's text and type, so the edit is
+  // visibly part of the linked label rather than a sibling text node.
+  await page.evaluate(() => {
+    const iframe = document.querySelector("iframe.cv-preview-frame");
+    const doc = iframe?.contentDocument;
+    const field = doc?.querySelector('[data-field="basics.contact.2"]');
+    const anchor = field?.querySelector("a");
+    if (!field || !anchor) throw new Error("Missing contact link field.");
+    const range = doc.createRange();
+    range.selectNodeContents(anchor);
+    range.collapse(false);
+    const selection = iframe.contentWindow.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    field.focus();
+  });
+  await page.keyboard.type("s");
+  await page.waitForTimeout(1200);
+
+  await refreshPreview();
+  await frame.locator('[data-field="basics.contact.2"]').waitFor();
+  const editedLink = frame.locator('[data-field="basics.contact.2"] a');
+  assert((await editedLink.count()) === 1, "The link was lost after editing its visible text.");
+  assert(
+    (await editedLink.getAttribute("href")) === "https://github.com/example",
+    `The edited link target changed to "${await editedLink.getAttribute("href")}".`,
+  );
+  const editedLabel = (await frame.locator('[data-field="basics.contact.2"]').innerText()).trim();
+  assert(
+    editedLabel.includes("github.com/example") && editedLabel !== "github.com/example",
+    `The edited field text did not keep the visible label: "${editedLabel}".`,
+  );
+
+  // Formatting commands still work on text inside a link.
+  await frame.locator('[data-field="basics.contact.2"]').click();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Shift+End");
+  await page.locator('button[title="Bold"]').click();
+  await page.waitForTimeout(500);
+  await refreshPreview();
+  const formattedField = frame.locator('[data-field="basics.contact.2"]');
+  await formattedField.waitFor();
+  const formattedHtml = await formattedField.innerHTML();
+  assert(/<(b|strong)[\s>]/i.test(formattedHtml), "Bold did not apply inside a link.");
+  assert(
+    (await formattedField.locator("a").getAttribute("href")) === "https://github.com/example",
+    "Formatting inside a link lost its target.",
+  );
+
+  // Font size runs through execCommand's <font> rewrite, another anchor-fragile path.
+  await frame.locator('[data-field="basics.contact.2"]').click();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Shift+End");
+  await page.locator('.toolbar-field.compact input[type="number"]').fill("10");
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await page.waitForTimeout(500);
+  await refreshPreview();
+  const sizedField = frame.locator('[data-field="basics.contact.2"]');
+  await sizedField.waitFor();
+  assert(
+    /font-size:\s*10pt/i.test(await sizedField.innerHTML()),
+    "Font size did not apply inside a link.",
+  );
+  assert(
+    (await sizedField.locator("a").getAttribute("href")) === "https://github.com/example",
+    "Font size inside a link lost its target.",
+  );
+
+  // Outside editing mode the runtime opens the target in a new tab without
+  // navigating the preview document.
+  await page.getByRole("button", { name: /Editing: On/ }).click();
+  await page.waitForFunction(() => {
+    const iframe = document.querySelector("iframe.cv-preview-frame");
+    const field = iframe?.contentDocument?.querySelector('[data-field="basics.name"]');
+    return field?.getAttribute("contenteditable") === null;
+  });
+  const popupPromise = context.waitForEvent("page", { timeout: 10000 });
+  await frame.locator('a[href="https://github.com/example"]').click();
+  const popup = await popupPromise;
+  await popup.waitForLoadState("domcontentloaded");
+  assert(
+    popup.url().startsWith("https://github.com/example"),
+    `Clicking the link opened "${popup.url()}" instead of the profile.`,
+  );
+  assert(
+    (await popup.evaluate(() => window.opener === null)),
+    "The new tab kept a window.opener reference.",
+  );
+  assert(
+    (await frame.locator('[data-field="basics.name"]').count()) === 1,
+    "Clicking a link navigated the preview document away from the CV.",
+  );
+  await popup.close();
+  await page.getByRole("button", { name: /Editing: Off/ }).click();
+  await page.waitForFunction(() => {
+    const iframe = document.querySelector("iframe.cv-preview-frame");
+    const field = iframe?.contentDocument?.querySelector('[data-field="basics.name"]');
+    return field?.getAttribute("contenteditable") === "true";
+  });
+
+  // The editing runtime must refuse hostile HTML captured from a field.
+  await page.evaluate(() => {
+    const iframe = document.querySelector("iframe.cv-preview-frame");
+    const field = iframe?.contentDocument?.querySelector('[data-field="basics.headline"]');
+    if (!field) throw new Error("Missing headline field.");
+    field.innerHTML =
+      '<a href="javascript:alert(1)" onclick="alert(2)">Hostile</a><b onclick="alert(3)">Bold</b>';
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await page.waitForTimeout(1200);
+  await refreshPreview();
+  await frame.locator('[data-field="basics.headline"]').waitFor();
+  const headlineHtml = await frame.locator('[data-field="basics.headline"]').innerHTML();
+  assert(!/javascript:/i.test(headlineHtml), "The runtime sanitizer kept a javascript: href.");
+  assert(!/onclick/i.test(headlineHtml), "The runtime sanitizer kept an event handler.");
+  assert(!/<a\b/i.test(headlineHtml), "The runtime sanitizer left a dead unsafe anchor.");
+  assert(headlineHtml.includes("Hostile"), "The runtime sanitizer dropped safe text.");
+
   const editable = await frame.locator('[data-field="basics.name"]').getAttribute("contenteditable");
   assert(editable === "true", "Preview fields are not editable by default.");
   const clippedWarnings = await page
@@ -238,16 +390,20 @@ try {
     const workspace = await root.getDirectoryHandle(name);
     const projects = await workspace.getDirectoryHandle("projects");
     let cvName = "";
+    let cvContact = [];
     let hasPdf = false;
     let pdfBase64 = "";
     let projectJsonHasCv = false;
+    let styles = {};
     for await (const entry of projects.values()) {
       if (entry.kind !== "directory") continue;
       const projectDir = await projects.getDirectoryHandle(entry.name);
       try {
         const file = await projectDir.getFileHandle("cv.json");
         const text = await (await file.getFile()).text();
-        cvName = JSON.parse(text).basics.name;
+        const cv = JSON.parse(text);
+        cvName = cv.basics.name;
+        cvContact = cv.basics.contact;
       } catch {
         // no cv.json yet
       }
@@ -255,6 +411,7 @@ try {
         const projectFile = await projectDir.getFileHandle("project.json");
         const projectData = JSON.parse(await (await projectFile.getFile()).text());
         projectJsonHasCv = Object.prototype.hasOwnProperty.call(projectData, "cv");
+        styles = projectData.styles ?? {};
       } catch {
         // no project.json yet
       }
@@ -270,7 +427,7 @@ try {
         pdfBase64 = btoa(binary);
       }
     }
-    return { cvName, hasPdf, pdfBase64, projectJsonHasCv };
+    return { cvName, cvContact, hasPdf, pdfBase64, projectJsonHasCv, styles };
   }, workspaceName);
   if (process.env.PDF_OUT && persisted.pdfBase64) {
     writeFileSync(process.env.PDF_OUT, Buffer.from(persisted.pdfBase64, "base64"));
@@ -278,12 +435,36 @@ try {
   assert(persisted.cvName.toLowerCase().includes("alex example"), `Persisted CV name was "${persisted.cvName}".`);
   assert(persisted.hasPdf, "The exported PDF was not written to the project folder.");
   assert(!persisted.projectJsonHasCv, "project.json must not duplicate CV content.");
+  assert(
+    persisted.cvContact[2] === editedLabel,
+    `The linked contact value was persisted as "${persisted.cvContact[2]}".`,
+  );
+
+  const classicStyle = persisted.styles.classic ?? {};
+  assert(
+    classicStyle.fieldText?.["basics.contact.2"] === editedLabel,
+    "The edited link text was not captured for the drift guard.",
+  );
+  assert(
+    classicStyle.fieldHtml?.["basics.contact.2"]?.includes(
+      'href="https://github.com/example"',
+    ),
+    `The saved field HTML lost the link: "${classicStyle.fieldHtml?.["basics.contact.2"]}".`,
+  );
+  assert(
+    !/javascript:|onclick|<a\b/i.test(classicStyle.fieldHtml?.["basics.headline"] ?? ""),
+    "The saved field HTML kept hostile markup.",
+  );
 
   const pdfBytes = Buffer.from(persisted.pdfBase64, "base64").toString("latin1");
   assert(pdfBytes.includes("/URI"), "The exported PDF has no link annotations.");
   assert(
     pdfBytes.includes("https://github.com/example"),
     "The exported PDF does not link the contact profile URL.",
+  );
+  assert(
+    !pdfBytes.includes(`https://${editedLabel}`),
+    "The exported PDF linked the edited label instead of the saved target.",
   );
   assert(pdfBytes.length > 1000, "The exported PDF looks empty.");
 

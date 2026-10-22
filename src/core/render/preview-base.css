@@ -16,6 +16,10 @@ body {
 body.cv-editing [data-field] {
   cursor: text;
 }
+/* A click on a link must place the caret instead of following the link. */
+body.cv-editing [data-field] a {
+  pointer-events: none;
+}
 a {
   color: inherit;
   text-decoration: underline;

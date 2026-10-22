@@ -108,6 +108,25 @@ describe("embedded links", () => {
     );
   });
 
+  it("keeps a saved link while its text matches and drops it when the value drifts", () => {
+    const renderer = RENDERERS[0];
+    const cv = cvWith(["Profile: github.com/example"], renderer);
+    const style = defaultStyle();
+    style.fieldHtml["basics.contact.0"] =
+      '<a href="https://github.com/example">Profile: github.com/example</a>';
+    style.fieldText["basics.contact.0"] = "Profile: github.com/example";
+
+    const kept = buildPrintDoc({ renderer, cv, style, title: "CV" });
+    expect(kept).toContain(
+      '<a href="https://github.com/example">Profile: github.com/example</a>',
+    );
+
+    cv.basics.contact[0] = "Profile: github.com/example2";
+    const drifted = buildPrintDoc({ renderer, cv, style, title: "CV" });
+    expect(drifted).not.toContain('href="https://github.com/example">');
+    expect(drifted).toContain('<a href="https://github.com/example2">');
+  });
+
   it("keeps safe anchors in saved field html and strips unsafe ones", () => {
     const safe = sanitizeSavedHtml(
       '<a href="https://github.com/example" target="_blank" rel="noopener" onclick="steal()">github.com/example</a>',
@@ -116,10 +135,12 @@ describe("embedded links", () => {
 
     const unsafe = sanitizeSavedHtml('<a href="javascript:alert(1)">click</a>');
     expect(unsafe).not.toContain("href=");
+    expect(unsafe).not.toContain("<a");
     expect(unsafe).toContain("click");
 
     const relative = sanitizeSavedHtml('<a href="notes.html">notes</a>');
     expect(relative).not.toContain("href=");
+    expect(relative).not.toContain("<a");
     expect(relative).toContain("notes");
   });
 });
