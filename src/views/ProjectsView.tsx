@@ -17,7 +17,7 @@ export function ProjectsView({ projects, onOpen, onNew }: Props) {
       <div className="view-head">
         <div>
           <h1>Applications</h1>
-          <p className="muted">One project per job application. Everything stays in your workspace folder.</p>
+          <p className="muted">One project per application or outreach effort. Everything stays in your workspace folder.</p>
         </div>
         <button className="primary" onClick={onNew}>
           New application
@@ -43,16 +43,25 @@ export function ProjectsView({ projects, onOpen, onNew }: Props) {
         </div>
       ) : (
         <div className="project-grid">
-          {filtered.map((project) => (
-            <button key={project.id} className="project-card" onClick={() => onOpen(project.id)}>
-              <span className="project-card-company">{project.company || "No company"}</span>
-              <strong>{project.title || project.name}</strong>
-              <span className="project-card-meta">
-                {project.updatedAt ? new Date(project.updatedAt).toLocaleString() : "Not saved"}
-              </span>
-              <span className="project-card-renderer">{project.rendererId}</span>
-            </button>
-          ))}
+          {filtered.map((project) => {
+            // Outreach-only projects have no company. Use a neutral label and
+            // avoid printing the project name twice when there is no title.
+            const companyLabel =
+              project.company || (project.title ? "No company" : "Outreach");
+            const titleLabel =
+              project.title ||
+              (project.name !== companyLabel ? project.name : "Outreach");
+            return (
+              <button key={project.id} className="project-card" onClick={() => onOpen(project.id)}>
+                <span className="project-card-company">{companyLabel}</span>
+                <strong>{titleLabel}</strong>
+                <span className="project-card-meta">
+                  {project.updatedAt ? new Date(project.updatedAt).toLocaleString() : "Not saved"}
+                </span>
+                <span className="project-card-renderer">{project.rendererId}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

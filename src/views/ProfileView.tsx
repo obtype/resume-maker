@@ -129,7 +129,7 @@ export function ProfileView({ profile, onChange, onSave }: Props) {
             />
           </label>
           <label className="field">
-            <span>Default extra instructions (optional)</span>
+            <span>Default instructions (applied to every deliverable)</span>
             <textarea
               rows={3}
               value={profile.defaultInstructions}
@@ -138,6 +138,10 @@ export function ProfileView({ profile, onChange, onSave }: Props) {
               }
               placeholder="e.g. Keep the tone understated. Do not include a photo. Prefer British spelling."
             />
+            <p className="fineprint">
+              Appended to the shared instructions for every requested deliverable — the CV, cover
+              letter, cold email, and LinkedIn message — not just the CV.
+            </p>
           </label>
         </section>
 

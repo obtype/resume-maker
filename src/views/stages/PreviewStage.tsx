@@ -313,7 +313,7 @@ export function PreviewStage({ project, profile, onChange, onOpenPrompt, onOpenI
         <button className="ghost" onClick={() => previewRef.current?.refresh()}>Refresh preview</button>
         <span className="grow" />
         <button className="link" onClick={onOpenPrompt}>Prompt</button>
-        <button className="link" onClick={onOpenImport}>Import response</button>
+        <button className="link" onClick={onOpenImport}>Response</button>
       </div>
 
       {overflow.clipped && (

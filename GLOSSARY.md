@@ -1,6 +1,6 @@
 # CV Studio
 
-A local-first application for turning a personal data record and a job description into one tailored, printable CV.
+A local-first application for turning a personal data record and a job description into a tailored CV and related application deliverables.
 
 ## Language
 
@@ -9,8 +9,28 @@ The folder the user grants the app access to; holds settings, the default profil
 _Avoid_: Vault, directory, repo
 
 **Project**
-One tailored CV inside a workspace: the CV content, its renderer and schema choice, inputs, and prompt/response history.
+One application or outreach effort inside a workspace: the job or recipient it targets, the deliverables requested, and the prompts and responses that produced them.
 _Avoid_: CV, document, job
+
+**Deliverable**
+One output the user asks the model to produce for a project: a CV, a cover letter, a cold email, or a LinkedIn message.
+_Avoid_: Document, output, artifact
+
+**Recipient**
+The person an outreach deliverable is addressed to, described by whatever profile details, about text, posts, and intent the user supplies.
+_Avoid_: Contact, lead, target
+
+**Cover letter**
+A letter tailored to one job and addressed to its employer, submitted alongside or instead of a CV.
+_Avoid_: Motivation letter, application letter
+
+**Cold email**
+An unsolicited email to a person at a target company, written without an existing relationship.
+_Avoid_: Outreach email, recruiter email
+
+**LinkedIn message**
+A follow-up message sent after a LinkedIn connection request has been accepted.
+_Avoid_: Connection note, DM, InMail
 
 **PDR**
 Personal data record. The imported markdown profile of the candidate's background, deliberately without contact details.

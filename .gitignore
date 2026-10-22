@@ -1,7 +1,7 @@
 node_modules/
 dist/
 local-data/
-workspace/
+/workspace/
 *.pdf
 .env
 .env.*

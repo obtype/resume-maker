@@ -2,33 +2,111 @@ import { useEffect, useMemo, useState } from "react";
 import { checkRenderer } from "../core/render/validateRenderer";
 import { RENDERERS } from "../renderers/registry";
 import type { RendererModule } from "../core/cv/types";
+import type {
+  PromptTemplateId,
+  PromptTemplateSources,
+  PromptTemplates,
+} from "../core/prompt/builder";
+import type { LegacyPromptArchiveResult } from "../core/workspace/projects";
+
+interface TemplateTab {
+  id: PromptTemplateId;
+  label: string;
+  hint: string;
+  placeholders: string[];
+}
+
+const TEMPLATE_TABS: TemplateTab[] = [
+  {
+    id: "context",
+    label: "Shared context",
+    hint: "Emitted once for every request: role, universal rules, candidate basics, PDR, job, shared instructions, and the existing CV.",
+    placeholders: [
+      "BASICS",
+      "PDR",
+      "JOB_TITLE",
+      "COMPANY",
+      "JOB_DESCRIPTION",
+      "SHARED_INSTRUCTIONS",
+      "EXISTING_CV",
+    ],
+  },
+  {
+    id: "cv",
+    label: "CV",
+    hint: "CV task, reference CV, CV instructions, the selected schema, and schema-specific notes.",
+    placeholders: [
+      "REFERENCE_CV",
+      "CV_INSTRUCTIONS",
+      "SCHEMA_NAME",
+      "SCHEMA_ID",
+      "SCHEMA_JSON",
+      "SCHEMA_NOTES",
+    ],
+  },
+  {
+    id: "coverLetter",
+    label: "Cover letter",
+    hint: "Cover-letter task, tone and length rules, per-deliverable instructions, and the output shape.",
+    placeholders: ["COVER_LETTER_INSTRUCTIONS", "COVER_LETTER_SCHEMA"],
+  },
+  {
+    id: "coldEmail",
+    label: "Cold email",
+    hint: "Cold-email task, recipient block, instructions, and the output shape. A missing job description is valid.",
+    placeholders: [
+      "COLD_EMAIL_INSTRUCTIONS",
+      "COLD_EMAIL_SCHEMA",
+      "RECIPIENT",
+    ],
+  },
+  {
+    id: "linkedinMessage",
+    label: "LinkedIn message",
+    hint: "LinkedIn follow-up task, recipient block, instructions, and the output shape after a connection request was accepted.",
+    placeholders: [
+      "LINKEDIN_INSTRUCTIONS",
+      "LINKEDIN_SCHEMA",
+      "RECIPIENT",
+    ],
+  },
+];
 
 interface Props {
   workspaceName: string;
-  promptTemplate: string;
-  templateSource: "bundled" | "override" | "fallback";
-  onSaveTemplate: (text: string) => Promise<void>;
-  onResetTemplate: () => Promise<void>;
-  onReloadTemplate: () => void;
+  templates: PromptTemplates;
+  templateSources: PromptTemplateSources;
+  legacyArchive: LegacyPromptArchiveResult | null;
+  legacyArchiveError: string;
+  onSaveTemplate: (id: PromptTemplateId, text: string) => Promise<void>;
+  onResetTemplate: (id: PromptTemplateId) => Promise<void>;
+  onReloadTemplate: (id: PromptTemplateId) => void;
   onChangeWorkspace: () => void;
 }
 
 export function SettingsView({
   workspaceName,
-  promptTemplate,
-  templateSource,
+  templates,
+  templateSources,
+  legacyArchive,
+  legacyArchiveError,
   onSaveTemplate,
   onResetTemplate,
   onReloadTemplate,
   onChangeWorkspace,
 }: Props) {
-  const [draft, setDraft] = useState(promptTemplate);
+  const [activeTab, setActiveTab] = useState<PromptTemplateId>("context");
+  const [draft, setDraft] = useState(templates.context);
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState("");
 
+  const active = TEMPLATE_TABS.find((tab) => tab.id === activeTab) ?? TEMPLATE_TABS[0];
+
   useEffect(() => {
-    setDraft(promptTemplate);
-  }, [promptTemplate]);
+    setDraft(templates[activeTab]);
+    setSavedFlash(false);
+    setSaveError("");
+  }, [activeTab, templates]);
 
   const checks = useMemo(
     () =>
@@ -42,7 +120,7 @@ export function SettingsView({
   const save = async () => {
     setSaveError("");
     try {
-      await onSaveTemplate(draft);
+      await onSaveTemplate(activeTab, draft);
       setSavedFlash(true);
       window.setTimeout(() => setSavedFlash(false), 1500);
     } catch (error) {
@@ -53,7 +131,7 @@ export function SettingsView({
   const reset = async () => {
     setSaveError("");
     try {
-      await onResetTemplate();
+      await onResetTemplate(activeTab);
     } catch (error) {
       setSaveError((error as Error).message);
     }
@@ -64,9 +142,31 @@ export function SettingsView({
       <div className="view-head">
         <div>
           <h1>Settings</h1>
-          <p className="muted">Workspace, prompt template, and renderer checks.</p>
+          <p className="muted">Workspace, prompt templates, and renderer checks.</p>
         </div>
       </div>
+
+      {legacyArchive?.archived && (
+        <div
+          className="callout notice legacy-archive-notice"
+          data-testid="legacy-archive-notice"
+        >
+          <strong>Legacy prompt override archived.</strong> The old single-file override{" "}
+          <code>config/cv-prompt.md</code> was moved to{" "}
+          <code>{legacyArchive.archivePath}</code>. The five split templates are now active, so
+          the archived file is no longer used.
+        </div>
+      )}
+      {legacyArchiveError && (
+        <div
+          className="callout error legacy-archive-notice"
+          data-testid="legacy-archive-error"
+        >
+          <strong>Could not archive <code>config/cv-prompt.md</code>.</strong> The original file was
+          left in place and nothing was deleted. Fix the workspace write error and reconnect to try
+          again. <span className="error-text">{legacyArchiveError}</span>
+        </div>
+      )}
 
       <section className="panel">
         <h2>Workspace</h2>
@@ -80,18 +180,47 @@ export function SettingsView({
         </div>
       </section>
 
-      <section className="panel">
-        <div className="row spread">
-          <div>
-            <h2>Prompt template</h2>
-            <p className="panel-note">
-              This is the single source of the static prompt instructions. Placeholders in
-              <code> double braces </code> are filled by the app. Saving writes an override to
-              <code> config/cv-prompt.md </code> in your workspace; the bundled default stays untouched.
-            </p>
-          </div>
-          <span className={`badge ${templateSource}`}>{templateSource}</span>
+      <section className="panel template-editor">
+        <div>
+          <h2>Prompt templates</h2>
+          <p className="panel-note">
+            Each deliverable has its own static template, plus one shared context template. The app
+            fills placeholders in <code>double braces</code>, then appends the output contract and a
+            metadata footer. Saving writes an override to <code>config/prompts/&lt;id&gt;.md</code> in
+            your workspace; the bundled default stays untouched.
+          </p>
         </div>
+
+        <div className="template-tabs" role="tablist" aria-label="Prompt templates">
+          {TEMPLATE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={activeTab === tab.id ? "active" : ""}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setDraft(templates[tab.id]);
+                setSavedFlash(false);
+                setSaveError("");
+              }}
+            >
+              <span>{tab.label}</span>
+              <span className={`badge ${templateSources[tab.id]}`}>
+                {templateSources[tab.id]}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="template-tab-head">
+          <p className="panel-note">{active.hint}</p>
+          <span className={`badge ${templateSources[active.id]}`}>
+            {templateSources[active.id]}
+          </span>
+        </div>
+
         <textarea
           className="mono tall"
           rows={24}
@@ -101,32 +230,22 @@ export function SettingsView({
         />
         <div className="row">
           <button className="primary" onClick={() => void save()}>Save override</button>
-          <button className="secondary" onClick={onReloadTemplate}>Reload</button>
+          <button className="secondary" onClick={() => onReloadTemplate(active.id)}>Reload</button>
           <button className="ghost" onClick={() => void reset()}>Use bundled default</button>
           {savedFlash && <span className="muted">Saved.</span>}
           {saveError && <span className="error-text">Save failed: {saveError}</span>}
         </div>
         <details className="details">
-          <summary>Available placeholders</summary>
+          <summary>Available placeholders for {active.label}</summary>
           <div className="placeholder-grid">
-            {[
-              "BASICS",
-              "PDR",
-              "REFERENCE_CV",
-              "JOB_TITLE",
-              "COMPANY",
-              "JOB_DESCRIPTION",
-              "EXTRA_INSTRUCTIONS",
-              "SCHEMA_NAME",
-              "SCHEMA_ID",
-              "SCHEMA_JSON",
-              "SCHEMA_NOTES",
-              "PROMPT_VERSION",
-              "DATE",
-            ].map((name) => (
+            {active.placeholders.map((name) => (
               <code key={name}>{`{{${name}}}`}</code>
             ))}
           </div>
+          <p className="panel-note">
+            Unknown placeholders stay visible. The app also appends the generated output contract
+            and a metadata footer with the prompt version and date.
+          </p>
         </details>
       </section>
 

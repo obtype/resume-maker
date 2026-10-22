@@ -1,6 +1,6 @@
 # Roadmap and extension notes
 
-This is a working list, not a promise. The core loop (profile → prompt → JSON → validate → edit → PDF) is complete. These are the highest-value next steps.
+This is a working list, not a promise. The core loop (profile → target → one prompt → JSON → validate → apply CV/messages → edit → PDF or copy/download) is complete. These are the highest-value next steps.
 
 ## 1. Project management
 
@@ -19,27 +19,36 @@ prompts/2026-10-21T16-00-00.md
 responses/2026-10-21T16-00-00.raw.txt
 ```
 
-with a manifest in `project.json`. Benefits: compare model outputs, roll back a bad response, audit which prompt produced which CV. Add a small history list in the Prompt/Import stages. Do not store API keys in project files.
+with a manifest in `project.json`. Benefits: compare model outputs, roll back a bad response, audit which prompt produced which CV or message. Add a small history list in the Prompt/Response stages. Do not store API keys in project files.
 
-## 3. Presets and additional document types
+## 3. Presets and additional document types (implemented)
 
-The current stage is CV-only. Introduce a `presets/` or `documents/` registry with one entry per output:
+The app now has four document presets sharing one context and one prompt per selection:
 
 | Preset | Inputs | Output |
 | --- | --- | --- |
-| Tailored CV | PDR, job, reference CV, schema | `cv.json` |
-| Cover letter | PDR, job, CV, tone | short Markdown or JSON |
-| Recruiter email | PDR, job, CV, tone | subject + body |
-| LinkedIn message | PDR, job, CV, tone | short message |
-| Follow-up | prior message, job | short message |
+| Tailored CV | PDR, job, reference CV, schema | `cv.json` + A4 PDF |
+| Cover letter | PDR, job, per-letter instructions, existing CV | Markdown string in `deliverables/cover-letter.md` |
+| Cold email | PDR, recipient context, per-email instructions, optional job | subject + body in `deliverables/cold-email.json` |
+| LinkedIn message | PDR, recipient context, per-message instructions, optional job | plain text in `deliverables/linkedin-message.txt` |
 
-Design constraints:
+Implemented constraints:
 
-- One Markdown template per preset under `public/config/prompts/`.
-- A single editor in Settings that lists templates and edits the active one.
-- Presets declare which inputs are required; the UI can hide irrelevant ones.
-- Each preset has its own validator. Reuse the same parse/repair pipeline.
-- Keep a project able to hold CV + letter outputs without mixing schemas.
+- One shared context template plus one Markdown task template per preset under `public/config/prompts/`.
+- Per-template workspace overrides under `config/prompts/`, edited from Settings.
+- Presets are independent: the CV schema and reference CV are omitted from message-only prompts.
+- Each preset validates independently; the user applies the CV and messages separately.
+- One project can hold a CV and one artifact of each message type without mixing content into `project.json`.
+- The old single-file prompt override is archived rather than silently ignored.
+
+Remaining ideas in this area:
+
+- A formatted cover-letter PDF or A4 preview (currently Markdown/text only).
+- Multiple artifacts of the same type per project, with versions and a chooser.
+- A follow-up-message preset that takes a prior message as context.
+- A LinkedIn connection-request note preset (300-character cap) distinct from the post-acceptance message.
+- A workspace-level contact book for recipients, with explicit reuse controls.
+- User-defined presets or a preset registry outside the four built-ins.
 
 Do not put cover-letter instructions into `cv.md`; a user editing their CV prompt should not accidentally change their email prompt.
 
@@ -84,6 +93,7 @@ This is a larger architectural change; do not fake it by letting `.cv-page` grow
 
 ## 7. PDF and export improvements
 
+- A formatted cover-letter PDF or A4 preview, with the same local export path as the CV.
 - A direct “Download PDF” as well as “write to project folder”.
 - Show the actual path/name after export (already shown by filename).
 - Keep a small export history (`exports/<timestamp>.pdf`) if users iterate.
@@ -92,7 +102,7 @@ This is a larger architectural change; do not fake it by letting `.cv-page` grow
 - Font embedding/selection for consistent output across machines.
 - A preflight report: page count, clipped containers, missing contact fields, schema warnings.
 
-The current implementation requires the local Node server for automatic export. A static deployment falls back to the print dialog; document this clearly if hosting changes.
+The current implementation requires the local Node server for automatic CV export. A static deployment falls back to the print dialog; document this clearly if hosting changes. Messages are copy/download only.
 
 ## 8. Reliability and tests
 
@@ -101,21 +111,23 @@ The current implementation requires the local Node server for automatic export. 
 - Test impact response import and PSO rendering end-to-end.
 - Add visual regression snapshots of rendered pages (careful: do not commit real PII).
 - Test a clipped CV and assert the overflow warning.
-- Test reset-to-bundled prompt and workspace override precedence.
+- Test reset-to-bundled prompt and workspace override precedence for every template.
 - Add a test for schema switching: impact fields survive a classic round trip.
-- Add a test that `project.json` never contains `cv` content in a future refactor (the smoke test already asserts it).
+- Add a test that `project.json` never contains `cv` or message content in a future refactor (the smoke test already asserts it).
+- Test multiple artifacts of the same type once that is supported.
 
 ## 9. Privacy and trust
 
 - Keep `local-data/` gitignored and never include it in examples, screenshots, tests, or issues.
 - Consider a “clear local cache” action for the IndexedDB handle.
 - Add a warning before copying a prompt that contains PII (already noted in the UI).
-- If telemetry is ever added, make it opt-in and never send CV content.
+- Keep the recipient third-party-data warning visible wherever profile/about/post text is entered.
+- If telemetry is ever added, make it opt-in and never send CV, message, or recipient content.
 - Keep the PDF endpoint same-origin and local.
 
 ## 10. UX polish
 
-- A global default renderer/schema setting.
+- A global default renderer/schema and default deliverable selection (currently per project).
 - Better empty states that link directly to Profile/import.
 - Keyboard shortcuts for copy/regenerate/apply.
 - A “duplicate last CV” action for a new application.

@@ -1,23 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import type { Profile, Project, ProjectSummary, Settings } from "./core/project";
 import { Layout, type SaveStatus } from "./components/Layout";
-import { NewProjectModal } from "./components/NewProjectModal";
+import { NewProjectModal, type NewProjectPayload } from "./components/NewProjectModal";
 import { Onboarding } from "./views/Onboarding";
 import { ProjectsView } from "./views/ProjectsView";
 import { ProfileView } from "./views/ProfileView";
 import { SettingsView } from "./views/SettingsView";
 import { ProjectView } from "./views/ProjectView";
 import {
+  archiveLegacyPromptOverride,
   createProject,
   initializeWorkspace,
   loadProject,
   loadProjectSummaries,
-  loadPromptTemplateOverride,
+  loadPromptTemplates,
   resetPromptTemplateOverride,
   saveProfile,
   saveProject,
   savePromptTemplateOverride,
   saveSettings,
+  type LegacyPromptArchiveResult,
+  type PromptTemplateOverrides,
 } from "./core/workspace/projects";
 import { loadHandle, saveHandle } from "./core/workspace/idb";
 import {
@@ -28,13 +31,25 @@ import {
   writeBinary,
 } from "./core/workspace/fs";
 import {
-  FALLBACK_PROMPT_TEMPLATE,
+  FALLBACK_TEMPLATES,
+  PROMPT_TEMPLATE_IDS,
   loadBundledPromptTemplate,
+  type PromptTemplateId,
+  type PromptTemplateSource,
+  type PromptTemplateSources,
+  type PromptTemplates,
 } from "./core/prompt/builder";
 import { getRenderer } from "./renderers/registry";
 
 type View = "projects" | "project" | "profile" | "settings";
-type TemplateSource = "bundled" | "override" | "fallback";
+
+const EMPTY_OVERRIDES = Object.fromEntries(
+  PROMPT_TEMPLATE_IDS.map((id) => [id, null]),
+) as PromptTemplateOverrides;
+
+const FALLBACK_SOURCES = Object.fromEntries(
+  PROMPT_TEMPLATE_IDS.map((id) => [id, "fallback"]),
+) as PromptTemplateSources;
 
 export default function App() {
   const [root, setRoot] = useState<FileSystemDirectoryHandle | null>(null);
@@ -49,33 +64,67 @@ export default function App() {
   const [project, setProject] = useState<Project | null>(null);
   const [view, setView] = useState<View>("projects");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({ state: "idle" });
-  const [promptTemplate, setPromptTemplate] = useState(FALLBACK_PROMPT_TEMPLATE);
-  const [templateSource, setTemplateSource] = useState<TemplateSource>("fallback");
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplates>({
+    ...FALLBACK_TEMPLATES,
+  });
+  const [templateSources, setTemplateSources] =
+    useState<PromptTemplateSources>(FALLBACK_SOURCES);
+  const [legacyArchive, setLegacyArchive] =
+    useState<LegacyPromptArchiveResult | null>(null);
+  const [legacyArchiveError, setLegacyArchiveError] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [creating, setCreating] = useState(false);
   const opToken = useRef(0);
   const rootRef = useRef<FileSystemDirectoryHandle | null>(null);
   rootRef.current = root;
 
-  const loadTemplate = async (workspace: FileSystemDirectoryHandle) => {
+  /** Bundled text for one template, or the minimal per-template fallback. */
+  const resolveTemplate = async (
+    id: PromptTemplateId,
+    override: string | null,
+  ): Promise<{ text: string; source: PromptTemplateSource }> => {
+    let text = FALLBACK_TEMPLATES[id];
+    let source: PromptTemplateSource = "fallback";
     try {
-      const override = await loadPromptTemplateOverride(workspace);
-      if (override?.trim()) {
-        setPromptTemplate(override);
-        setTemplateSource("override");
-        return;
-      }
+      text = await loadBundledPromptTemplate(id);
+      source = "bundled";
     } catch {
-      // Fall through to the bundled template.
+      // Keep the minimal fallback for this template only.
     }
+    if (override?.trim()) return { text: override, source: "override" };
+    return { text, source };
+  };
+
+  const loadTemplates = async (workspace: FileSystemDirectoryHandle) => {
+    let overrides = EMPTY_OVERRIDES;
     try {
-      const bundled = await loadBundledPromptTemplate();
-      setPromptTemplate(bundled);
-      setTemplateSource("bundled");
+      overrides = await loadPromptTemplates(workspace);
     } catch {
-      setPromptTemplate(FALLBACK_PROMPT_TEMPLATE);
-      setTemplateSource("fallback");
+      // Unreadable overrides fall back to the bundled files.
     }
+    const templates: PromptTemplates = { ...FALLBACK_TEMPLATES };
+    const sources = { ...FALLBACK_SOURCES };
+    for (const id of PROMPT_TEMPLATE_IDS) {
+      const resolved = await resolveTemplate(id, overrides[id]);
+      templates[id] = resolved.text;
+      sources[id] = resolved.source;
+    }
+    setPromptTemplates(templates);
+    setTemplateSources(sources);
+  };
+
+  /** Reloads one template so an external edit is picked up without tabs reset. */
+  const reloadTemplate = async (id: PromptTemplateId) => {
+    if (!root) return;
+    let overrides = EMPTY_OVERRIDES;
+    try {
+      overrides = await loadPromptTemplates(root);
+    } catch {
+      // Fall through to the bundled file.
+    }
+    const resolved = await resolveTemplate(id, overrides[id]);
+    setPromptTemplates((current) => ({ ...current, [id]: resolved.text }));
+    setTemplateSources((current) => ({ ...current, [id]: resolved.source }));
   };
 
   const hydrate = async (workspace: FileSystemDirectoryHandle) => {
@@ -87,7 +136,23 @@ export default function App() {
     const summaries = await loadProjectSummaries(workspace);
     if (token !== opToken.current) return;
     setProjects(summaries);
-    await loadTemplate(workspace);
+
+    // Move the pre-deliverables `config/cv-prompt.md` out of the way exactly
+    // once; the per-template overrides are the only active override slot.
+    try {
+      const archived = await archiveLegacyPromptOverride(workspace);
+      if (token !== opToken.current) return;
+      if (archived.archived) {
+        setLegacyArchive(archived);
+        setLegacyArchiveError("");
+      }
+    } catch (error) {
+      if (token !== opToken.current) return;
+      setLegacyArchive(null);
+      setLegacyArchiveError((error as Error).message);
+    }
+
+    await loadTemplates(workspace);
     if (token !== opToken.current) return;
     const lastId = initialized.settings.lastProjectId;
     if (lastId && summaries.some((summary) => summary.id === lastId)) {
@@ -204,6 +269,8 @@ export default function App() {
       setProfile(null);
       setSettings(null);
       setProjects([]);
+      setLegacyArchive(null);
+      setLegacyArchiveError("");
       setShowNew(false);
       setCreating(false);
       setRoot(handle);
@@ -281,7 +348,7 @@ export default function App() {
     }
   };
 
-  const newProject = async (title: string, company: string, rendererId: string) => {
+  const newProject = async (payload: NewProjectPayload) => {
     if (!root || !profile) return;
     const workspace = root;
     const token = ++opToken.current;
@@ -289,13 +356,15 @@ export default function App() {
     try {
       if (project) await saveProject(workspace, project);
       if (token !== opToken.current || rootRef.current !== workspace) return;
-      const renderer = getRenderer(rendererId);
+      const renderer = getRenderer(payload.rendererId);
       const created = await createProject(workspace, {
         profile,
-        jobTitle: title,
-        company,
-        rendererId,
+        jobTitle: payload.jobTitle,
+        company: payload.company,
+        rendererId: renderer.meta.id,
         schemaId: renderer.meta.schemas[0],
+        deliverables: payload.deliverables,
+        recipientName: payload.recipientName,
       });
       if (token !== opToken.current || rootRef.current !== workspace) return;
       setProject(created);
@@ -336,11 +405,11 @@ export default function App() {
     }
   };
 
-  const saveTemplate = async (text: string) => {
+  const saveTemplate = async (id: PromptTemplateId, text: string) => {
     if (!root) return;
-    await savePromptTemplateOverride(root, text);
-    setPromptTemplate(text);
-    setTemplateSource("override");
+    await savePromptTemplateOverride(root, id, text);
+    setPromptTemplates((current) => ({ ...current, [id]: text }));
+    setTemplateSources((current) => ({ ...current, [id]: "override" }));
   };
 
   const savePdfToProject = async (blob: Blob, filename: string): Promise<boolean> => {
@@ -349,10 +418,10 @@ export default function App() {
     await writeBinary(directory, [filename], new Uint8Array(await blob.arrayBuffer()));
     return true;
   };
-  const resetTemplate = async () => {
+  const resetTemplate = async (id: PromptTemplateId) => {
     if (!root) return;
-    await resetPromptTemplateOverride(root);
-    await loadTemplate(root);
+    await resetPromptTemplateOverride(root, id);
+    await reloadTemplate(id);
   };
 
   if (loading) {
@@ -449,11 +518,13 @@ export default function App() {
         {view === "settings" && (
           <SettingsView
             workspaceName={workspaceName}
-            promptTemplate={promptTemplate}
-            templateSource={templateSource}
+            templates={promptTemplates}
+            templateSources={templateSources}
+            legacyArchive={legacyArchive}
+            legacyArchiveError={legacyArchiveError}
             onSaveTemplate={saveTemplate}
             onResetTemplate={resetTemplate}
-            onReloadTemplate={() => void loadTemplate(root)}
+            onReloadTemplate={(id) => void reloadTemplate(id)}
             onChangeWorkspace={() => void chooseWorkspace()}
           />
         )}
@@ -461,8 +532,8 @@ export default function App() {
           <ProjectView
             project={project}
             profile={profile}
-            template={promptTemplate}
-            templateSource={templateSource}
+            templates={promptTemplates}
+            templateSources={templateSources}
             onChange={updateProject}
             onOpenSettings={() => setView("settings")}
             onSavePdf={savePdfToProject}
@@ -481,7 +552,7 @@ export default function App() {
         busy={creating}
         defaultRendererId={settings.defaultRendererId}
         onClose={() => setShowNew(false)}
-        onCreate={(title, company, rendererId) => void newProject(title, company, rendererId)}
+        onCreate={(payload) => void newProject(payload)}
       />
     </>
   );
