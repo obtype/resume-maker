@@ -12,6 +12,18 @@ import {
   type MessageDeliverableId,
   type Recipient,
 } from "../../core/deliverables/types";
+import { JobFetchRequestError, requestJobFetch } from "../../core/job/client";
+import {
+  DENIED_SOURCE_MESSAGE,
+  describeJobFetchFailure,
+  type JobFetchFailureCopy,
+} from "../../core/job/failure";
+import {
+  httpUrl,
+  isUnsupportedSource,
+  mergeTargetIntoJob,
+  type FetchedTarget,
+} from "../../core/job/target";
 import { RecipientFields } from "../../components/RecipientFields";
 
 interface Props {
@@ -19,7 +31,22 @@ interface Props {
   profile: Profile;
   onChange: (updater: (project: Project) => Project) => void;
   onNext: () => void;
+  /** career-ops checkout from Settings; empty disables fetching. */
+  careerOpsDir: string;
+  onOpenSettings: () => void;
 }
+
+type FetchState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ok"; target: FetchedTarget; warnings: string[]; filled: string[] }
+  | { status: "error"; code: string; extractorCode: string; failure: JobFetchFailureCopy };
+
+/**
+ * A fetch that is still running after this long reads as broken unless the
+ * surface says otherwise; boards normally answer in a few seconds.
+ */
+const SLOW_FETCH_MS = 15_000;
 
 const DELIVERABLE_HINTS: Record<DeliverableId, string> = {
   cv: "Tailored one-page CV",
@@ -71,17 +98,101 @@ function DeliverablePanel({
   );
 }
 
-export function ApplyStage({ project, profile, onChange, onNext }: Props) {
+export function ApplyStage({
+  project,
+  profile,
+  onChange,
+  onNext,
+  careerOpsDir,
+  onOpenSettings,
+}: Props) {
   const referenceRef = useRef<HTMLInputElement>(null);
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const projectIdRef = useRef(project.id);
   projectIdRef.current = project.id;
+
+  const [postingUrl, setPostingUrl] = useState("");
+  const [replaceExisting, setReplaceExisting] = useState(false);
+  const [fetchState, setFetchState] = useState<FetchState>({ status: "idle" });
+  // Only set while a request is in flight; the elapsed readout below is derived
+  // from it so a slow board can be told apart from a hung one.
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+
+  // A fetch belongs to the project that started it, so switching projects
+  // clears the URL and the status instead of carrying them over.
+  useEffect(() => {
+    setPostingUrl("");
+    setReplaceExisting(false);
+    setFetchState({ status: "idle" });
+    setStartedAt(null);
+    setElapsedMs(0);
+  }, [project.id]);
+
+  useEffect(() => {
+    if (startedAt === null) return;
+    const timer = window.setInterval(() => setElapsedMs(Date.now() - startedAt), 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
 
   const selected = project.deliverables.selected;
   const settings = project.deliverables.settings;
   const missingCount = missingDeliverableIds(project).length;
+  const fetchConfigured = careerOpsDir.trim() !== "";
+  const fetchBusy = fetchState.status === "loading";
+  const deniedSource = isUnsupportedSource(postingUrl);
+  const sourceUrl = httpUrl(project.job.sourceUrl ?? "")?.href ?? "";
 
   const setJob = (patch: Partial<Project["job"]>) =>
     onChange((current) => ({ ...current, job: { ...current.job, ...patch } }));
+
+  const fetchPosting = async () => {
+    const targetId = project.id;
+    const url = postingUrl.trim();
+    if (!url || fetchBusy) return;
+    // The status line already says this page cannot be read, so there is
+    // nothing to send: no request, no retry, just the paste fallback.
+    if (isUnsupportedSource(url)) return;
+    // Capture the choice at click time so toggling it mid-flight cannot change
+    // what this run writes.
+    const replace = replaceExisting;
+    setStartedAt(Date.now());
+    setElapsedMs(0);
+    setFetchState({ status: "loading" });
+    try {
+      const result = await requestJobFetch(url, careerOpsDir);
+      if (projectIdRef.current !== targetId) return;
+      const merged = mergeTargetIntoJob(project.job, result.target, { replace });
+      const filled = [
+        merged.title !== project.job.title ? "title" : "",
+        merged.company !== project.job.company ? "company" : "",
+        merged.description !== project.job.description ? "description" : "",
+      ].filter(Boolean);
+      // Merge through the updater so autosave persists the result and any
+      // edit made while the request was in flight is still respected.
+      onChange((current) => ({
+        ...current,
+        job: mergeTargetIntoJob(current.job, result.target, { replace }),
+      }));
+      setFetchState({ status: "ok", target: result.target, warnings: result.warnings, filled });
+    } catch (error) {
+      if (projectIdRef.current !== targetId) return;
+      const code = error instanceof JobFetchRequestError ? error.code : "unknown";
+      setFetchState({
+        status: "error",
+        code,
+        extractorCode: error instanceof JobFetchRequestError ? error.extractorCode : "",
+        failure: describeJobFetchFailure(code, (error as Error).message),
+      });
+    } finally {
+      if (projectIdRef.current === targetId) {
+        setStartedAt(null);
+        setElapsedMs(0);
+      }
+    }
+  };
+
+  const focusDescription = () => descriptionRef.current?.focus();
 
   const setSelected = (id: DeliverableId, checked: boolean) =>
     onChange((current) => ({
@@ -164,6 +275,117 @@ export function ApplyStage({ project, profile, onChange, onNext }: Props) {
         <button className="primary" onClick={onNext}>Next: prompt</button>
       </div>
 
+      <section className="panel job-fetch" data-testid="job-fetch">
+        <div className="row spread">
+          <div>
+            <h3>Fetch from a posting URL</h3>
+            <p className="panel-note">
+              Reads the posting through the local career-ops extractor. Only empty fields are
+              filled unless you tick Replace existing text; nothing else in the project is touched.
+            </p>
+          </div>
+          <span className="badge">optional</span>
+        </div>
+
+        <div className="row job-fetch-bar">
+          <input
+            className="grow"
+            aria-label="Posting URL"
+            value={postingUrl}
+            onChange={(event) => setPostingUrl(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void fetchPosting();
+            }}
+            placeholder="https://jobs.example.com/acme/1234"
+            disabled={fetchBusy}
+          />
+          <button
+            className="primary"
+            onClick={() => void fetchPosting()}
+            disabled={!fetchConfigured || !postingUrl.trim() || fetchBusy || deniedSource}
+          >
+            {fetchBusy ? "Fetching…" : fetchState.status === "error" ? "Try again" : "Fetch job"}
+          </button>
+        </div>
+
+        <div className="row job-fetch-options">
+          <label>
+            <input
+              type="checkbox"
+              checked={replaceExisting}
+              onChange={(event) => setReplaceExisting(event.target.checked)}
+            />
+            Replace existing text
+          </label>
+          <span className="muted">
+            {replaceExisting
+              ? "Fetched values overwrite what is already there."
+              : "Only empty fields are filled; text you already wrote is left alone."}
+          </span>
+        </div>
+
+        {deniedSource && (
+          <p className="callout warn" data-testid="job-fetch-denied">
+            {DENIED_SOURCE_MESSAGE}
+          </p>
+        )}
+
+        {!fetchConfigured && (
+          <p className="panel-note" data-testid="job-fetch-unconfigured">
+            Set the career-ops folder in Settings to fetch a posting. Pasting the description
+            below still works.{" "}
+            <button className="ghost" onClick={onOpenSettings}>Open Settings</button>
+          </p>
+        )}
+
+        {fetchBusy && elapsedMs >= SLOW_FETCH_MS && (
+          <p className="panel-note" data-testid="job-fetch-elapsed">
+            Still waiting on the posting — {Math.floor(elapsedMs / 1000)}s elapsed. The rest of the
+            app keeps working.
+          </p>
+        )}
+
+        {fetchState.status === "error" && (
+          <div
+            className="callout error job-fetch-status"
+            data-testid="job-fetch-status"
+            data-code={fetchState.code}
+          >
+            <p>{fetchState.failure.message}</p>
+            {fetchState.failure.nextStep && <p>{fetchState.failure.nextStep}</p>}
+            {fetchState.extractorCode && (
+              <p className="muted" data-testid="job-fetch-extractor-code">
+                Extractor reported: {fetchState.extractorCode}
+              </p>
+            )}
+            {fetchState.failure.action === "settings" && (
+              <button className="ghost" onClick={onOpenSettings}>Open Settings</button>
+            )}
+            {fetchState.failure.action === "paste" && (
+              <button className="ghost" onClick={focusDescription}>Go to description</button>
+            )}
+          </div>
+        )}
+        {fetchState.status === "ok" && (
+          <p className="callout" data-testid="job-fetch-status">
+            Fetched {fetchState.target.description.length.toLocaleString()} characters
+            {fetchState.target.ats ? ` · ${fetchState.target.ats} recognised` : ""}.{" "}
+            {fetchState.filled.length
+              ? `Filled: ${fetchState.filled.join(", ")}.`
+              : "Every target field already had text, so nothing was replaced."}
+          </p>
+        )}
+        {fetchState.status === "ok" && fetchState.warnings.length > 0 && (
+          <div className="callout warn" data-testid="job-fetch-warnings">
+            <ul>
+              {fetchState.warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+
       <div className="grid two">
         <label className="field">
           <span>Job title</span>
@@ -186,13 +408,26 @@ export function ApplyStage({ project, profile, onChange, onNext }: Props) {
       <label className="field">
         <span>Job description and requirements</span>
         <textarea
+          ref={descriptionRef}
           className="tall"
           rows={16}
           value={project.job.description}
           onChange={(event) => setJob({ description: event.target.value })}
           placeholder="Paste the full job posting here. Responsibilities, requirements, nice-to-haves, team context — all of it. Leave it empty for pure outreach."
         />
+        <p className="panel-note" data-testid="job-description-count">
+          {project.job.description.length.toLocaleString()} characters
+        </p>
       </label>
+
+      {sourceUrl && (
+        <p className="panel-note job-source" data-testid="job-source-url">
+          Source:{" "}
+          <a href={sourceUrl} target="_blank" rel="noreferrer noopener">
+            {sourceUrl}
+          </a>
+        </p>
+      )}
 
       <label className="field">
         <span>Shared instructions for this application</span>

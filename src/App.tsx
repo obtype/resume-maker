@@ -361,6 +361,8 @@ export default function App() {
         profile,
         jobTitle: payload.jobTitle,
         company: payload.company,
+        description: payload.description,
+        sourceUrl: payload.sourceUrl,
         rendererId: renderer.meta.id,
         schemaId: renderer.meta.schemas[0],
         deliverables: payload.deliverables,
@@ -410,6 +412,14 @@ export default function App() {
     await savePromptTemplateOverride(root, id, text);
     setPromptTemplates((current) => ({ ...current, [id]: text }));
     setTemplateSources((current) => ({ ...current, [id]: "override" }));
+  };
+
+  /** Settings are small and typed once, so write through on every change. */
+  const changeCareerOpsDir = (value: string) => {
+    if (!root || !settings) return;
+    const next = { ...settings, careerOpsDir: value };
+    setSettings(next);
+    void saveSettings(root, next);
   };
 
   const savePdfToProject = async (blob: Blob, filename: string): Promise<boolean> => {
@@ -522,9 +532,11 @@ export default function App() {
             templateSources={templateSources}
             legacyArchive={legacyArchive}
             legacyArchiveError={legacyArchiveError}
+            careerOpsDir={settings.careerOpsDir}
             onSaveTemplate={saveTemplate}
             onResetTemplate={resetTemplate}
             onReloadTemplate={(id) => void reloadTemplate(id)}
+            onChangeCareerOpsDir={changeCareerOpsDir}
             onChangeWorkspace={() => void chooseWorkspace()}
           />
         )}
@@ -537,6 +549,7 @@ export default function App() {
             onChange={updateProject}
             onOpenSettings={() => setView("settings")}
             onSavePdf={savePdfToProject}
+            careerOpsDir={settings.careerOpsDir}
           />
         )}
         {view === "project" && !project && (
@@ -551,6 +564,7 @@ export default function App() {
         open={showNew}
         busy={creating}
         defaultRendererId={settings.defaultRendererId}
+        careerOpsDir={settings.careerOpsDir}
         onClose={() => setShowNew(false)}
         onCreate={(payload) => void newProject(payload)}
       />

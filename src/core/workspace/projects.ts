@@ -76,6 +76,9 @@ export async function initializeWorkspace(
 
   const storedSettings = await readJson<Settings>(root, ["settings.json"]);
   const settings = { ...createDefaultSettings(), ...(storedSettings ?? {}) };
+  // Additive settings fields must survive a hand-edited or older settings.json;
+  // a non-string path would otherwise reach the fetch request as-is.
+  settings.careerOpsDir = typeof settings.careerOpsDir === "string" ? settings.careerOpsDir : "";
   if (!storedSettings) await writeJson(root, ["settings.json"], settings);
 
   const storedProfile = await readJson<Profile>(root, ["profiles", "default.json"]);
@@ -282,10 +285,18 @@ export async function createProject(
     /** Defaults to `["cv"]` when omitted. */
     deliverables?: readonly DeliverableId[];
     recipientName?: string;
+    /**
+     * Job description carried in from a fetch. Omitted for a target typed by
+     * hand, which is every project created before job autofill.
+     */
+    description?: string;
+    /** Posting the description was fetched from; omitted when typed by hand. */
+    sourceUrl?: string;
   },
 ): Promise<Project> {
   const { profile, jobTitle, company } = options;
   const recipientName = options.recipientName?.trim() ?? "";
+  const sourceUrl = options.sourceUrl?.trim() ?? "";
   const renderer = getRenderer(options.rendererId);
   const schemaId = renderer.meta.schemas.includes(options.schemaId)
     ? options.schemaId
@@ -329,9 +340,12 @@ export async function createProject(
     job: {
       title: jobTitle,
       company,
-      description: "",
+      description: options.description ?? "",
       sharedInstructions: "",
       referenceCv: "",
+      // Absent rather than empty for a hand-typed target, so the stored record
+      // keeps exactly the shape it had before job autofill.
+      sourceUrl: sourceUrl || undefined,
     },
     rendererId: renderer.meta.id,
     schemaId,

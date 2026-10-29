@@ -268,6 +268,8 @@ describe("project loading", () => {
     expect(loaded.files.coverLetter).toBeUndefined();
     expect(loaded.files.coldEmail).toBeUndefined();
     expect(loaded.files.linkedinMessage).toBeUndefined();
+    // A project written before job autofill has no posting URL to load.
+    expect(loaded.job.sourceUrl).toBeUndefined();
   });
 
   it("ignores a stale artifact index entry with no file", async () => {
@@ -285,6 +287,37 @@ describe("project loading", () => {
 
     expect(loaded.artifacts.coverLetter).toBeUndefined();
     expect(loaded.files.coverLetter).toBeUndefined();
+  });
+});
+
+describe("workspace settings", () => {
+  it("loads a settings.json written before job autofill and leaves it alone", async () => {
+    const { handle } = memoryWorkspace();
+    // Exactly what an older workspace holds: no `careerOpsDir` key at all.
+    const legacy = {
+      schemaVersion: 1,
+      defaultRendererId: "impact",
+      lastProjectId: "acme-ml-2026-10-20",
+    };
+    await writeJson(handle, ["settings.json"], legacy);
+
+    const { settings } = await initializeWorkspace(handle);
+
+    expect(settings.schemaVersion).toBe(1);
+    expect(settings.defaultRendererId).toBe("impact");
+    expect(settings.lastProjectId).toBe("acme-ml-2026-10-20");
+    expect(settings.careerOpsDir).toBe("");
+    // The file is not rewritten on hydrate, so an older version still reads it.
+    await expect(readJson(handle, ["settings.json"])).resolves.toEqual(legacy);
+  });
+
+  it("normalises a non-string careerOpsDir to an empty folder", async () => {
+    const { handle } = memoryWorkspace();
+    await writeJson(handle, ["settings.json"], { schemaVersion: 1, careerOpsDir: 42 });
+
+    const { settings } = await initializeWorkspace(handle);
+
+    expect(settings.careerOpsDir).toBe("");
   });
 });
 
@@ -439,6 +472,73 @@ describe("project creation", () => {
     });
 
     expect(project.deliverables.selected).toEqual(["cv"]);
+  });
+
+  it("stores a fetched description and source URL and mirrors the description", async () => {
+    const { handle } = memoryWorkspace();
+    await initializeWorkspace(handle);
+    const description = [
+      "Acme Robotics is hiring a computer vision engineer to own perception for our warehouse fleet.",
+      "",
+      "Requirements: strong Python and C++, hands-on PyTorch, and edge inference experience.",
+    ].join("\n");
+    const sourceUrl = "https://jobs.ashbyhq.com/acme-robotics/8f4d2c1e";
+
+    const project = await createProject(handle, {
+      profile: testProfile(),
+      jobTitle: "Computer Vision Engineer",
+      company: "Acme Robotics",
+      description,
+      sourceUrl,
+      rendererId: "classic",
+      schemaId: "classic",
+    });
+
+    // The fetched title and company are the form's values, so they also name
+    // the project and its folder.
+    expect(project.name).toBe("Acme Robotics — Computer Vision Engineer");
+    expect(project.id).toMatch(/^acme-robotics-\d{4}-\d{2}-\d{2}$/);
+    expect(project.job.description).toBe(description);
+    expect(project.job.sourceUrl).toBe(sourceUrl);
+
+    await expect(
+      readText(handle, ["projects", project.id, "inputs", "job.md"]),
+    ).resolves.toBe(`${description}\n`);
+
+    const loaded = await loadProject(handle, project.id, testProfile());
+    expect(loaded.job.description).toBe(description);
+    expect(loaded.job.sourceUrl).toBe(sourceUrl);
+  });
+
+  it("keeps a hand-typed target's empty description and absent source URL", async () => {
+    const { handle } = memoryWorkspace();
+    await initializeWorkspace(handle);
+
+    const project = await createProject(handle, {
+      profile: testProfile(),
+      jobTitle: "ML Engineer",
+      company: "Acme",
+      rendererId: "classic",
+      schemaId: "classic",
+    });
+
+    expect(project.name).toBe("Acme — ML Engineer");
+    expect(project.id).toMatch(/^acme-\d{4}-\d{2}-\d{2}$/);
+    expect(project.job.description).toBe("");
+    expect(project.job.sourceUrl).toBeUndefined();
+
+    // The description mirror is still written, exactly as before autofill.
+    await expect(
+      readText(handle, ["projects", project.id, "inputs", "job.md"]),
+    ).resolves.toBe("\n");
+
+    const persisted = await readJson<Record<string, unknown>>(handle, [
+      "projects",
+      project.id,
+      "project.json",
+    ]);
+    expect(persisted?.job).toMatchObject({ description: "" });
+    expect(persisted?.job).not.toHaveProperty("sourceUrl");
   });
 
   it("keeps the pure name and slug fallbacks in order", () => {

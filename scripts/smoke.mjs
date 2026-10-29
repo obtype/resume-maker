@@ -1,11 +1,16 @@
 import { spawn } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 const APP_URL = "http://127.0.0.1:5173";
 const CHROME = process.env.CHROME_PATH || "/usr/bin/google-chrome";
 const workspaceName = `cv-studio-smoke-${Date.now()}`;
+/** Set once the retry URL is chosen, so the fail-once marker is always cleaned. */
+let retryMarkerPath = "";
 
 const server = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1"], {
   cwd: fileURLToPath(new URL("..", import.meta.url)),
@@ -158,9 +163,14 @@ try {
   }
 
   const errors = [];
+  // The retry scenario deliberately answers one request with 502, which Chrome
+  // logs as a console error; only that expected line is ignored.
+  let allowExpectedFetchFailure = false;
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+    if (message.type() !== "error") return;
+    if (allowExpectedFetchFailure && message.text().includes("502")) return;
+    errors.push(`console: ${message.text()}`);
   });
   page.on("response", async (response) => {
     if (!process.env.PDF_OUT || !response.url().includes("/api/export-pdf") || !response.ok()) return;
@@ -172,11 +182,13 @@ try {
   });
 
   await page.addInitScript((name) => {
-    let pickerCount = 0;
+    // The counter lives in sessionStorage so it survives the mid-run reload;
+    // a plain variable would restart at zero and hand back the first workspace.
     window.showDirectoryPicker = async () => {
+      const pickerCount = Number(sessionStorage.getItem("smokePickerCount") ?? "0");
+      sessionStorage.setItem("smokePickerCount", String(pickerCount + 1));
       const root = await navigator.storage.getDirectory();
       const folder = pickerCount === 0 ? name : `${name}-second`;
-      pickerCount += 1;
       const directory = await root.getDirectoryHandle(folder, { create: true });
       if (folder === name) {
         // Seed the pre-deliverables single override so the migration notice and
@@ -244,6 +256,25 @@ try {
   assert(
     await cvDeliverable.isDisabled(),
     "The last selected deliverable must not be uncheckable.",
+  );
+
+  // No career-ops folder is configured yet, so fetching is disabled and the
+  // description box is the documented fallback.
+  await page.getByTestId("job-fetch-unconfigured").waitFor();
+  assert(
+    await page.getByRole("button", { name: "Fetch job" }).isDisabled(),
+    "Fetching was enabled before a career-ops folder was configured.",
+  );
+  assert(
+    await page.getByPlaceholder(/Paste the full job posting here/).isEditable(),
+    "The description box was unusable while fetching was unconfigured.",
+  );
+  // A project whose target was typed by hand has no posting URL, so the source
+  // line must be absent rather than an empty row: the layout is what it was
+  // before autofill existed.
+  assert(
+    (await page.getByTestId("job-source-url").count()) === 0,
+    "A project without a source URL rendered a source line.",
   );
 
   await page
@@ -1351,6 +1382,11 @@ try {
       coverOnly.record.schemaId === "classic",
     "A non-CV project did not keep the default renderer and a valid schema.",
   );
+  assert(
+    coverOnly.record.job?.description === "" &&
+      !Object.prototype.hasOwnProperty.call(coverOnly.record.job ?? {}, "sourceUrl"),
+    "A project created without a fetch did not keep an empty description and no source URL.",
+  );
 
   await page.locator(".stage-tabs button", { hasText: "3 · Response" }).click();
   await page.getByRole("heading", { name: "Response", exact: true }).waitFor();
@@ -1761,6 +1797,342 @@ try {
     `A CV-only project wrote message files: ${cvOnlyPersisted.deliverables.join(", ")}.`,
   );
 
+  // ----- Job autofill: fetch a posting into an existing project -----
+  // The extractor is stubbed by a fixture directory, so this proves the route
+  // and the Target stage offline: no career-ops checkout, no network, no board.
+  const fixtureCareerOps = fileURLToPath(new URL("./fixtures/job-fetch", import.meta.url));
+  const fixturePosting = "https://jobs.ashbyhq.com/acme-robotics/8f4d2c1e";
+
+  await page.locator(".topnav button", { hasText: "Settings" }).click();
+  await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
+  await page.getByLabel("career-ops folder").fill(fixtureCareerOps);
+
+  await page.locator(".topnav button", { hasText: "Projects" }).click();
+  await page.locator(".view-head button.primary").click();
+  await page.getByPlaceholder("Acme").fill("Acme Robotics");
+  await page.locator(".modal button.primary").click();
+  await page.locator(".stage-tabs").waitFor();
+
+  await page.getByTestId("job-fetch").waitFor();
+  assert(
+    (await page.getByTestId("job-fetch-unconfigured").count()) === 0,
+    "The fetch bar still reported the extractor as unconfigured after setting the folder.",
+  );
+
+  await page.getByLabel("Posting URL").fill(fixturePosting);
+  await page.getByRole("button", { name: "Fetch job" }).click();
+  const fetchStatus = page.getByTestId("job-fetch-status");
+  await fetchStatus.waitFor({ timeout: 30000 });
+  const fetchStatusText = await fetchStatus.innerText();
+  assert(
+    fetchStatusText.includes("Fetched"),
+    `The fetch status did not report a success: "${fetchStatusText}".`,
+  );
+  assert(
+    fetchStatusText.includes("ashby"),
+    `The fetch status did not name the recognised ATS: "${fetchStatusText}".`,
+  );
+
+  assert(
+    (await page.getByPlaceholder("Machine Learning Engineer").inputValue()) ===
+      "Computer Vision Engineer",
+    "The fetch did not fill the empty job title.",
+  );
+  assert(
+    (await page.getByPlaceholder("Acme", { exact: true }).inputValue()) === "Acme Robotics",
+    "The fetch replaced a company the user had already typed.",
+  );
+  const fetchedDescription = await page
+    .getByPlaceholder(/Paste the full job posting here/)
+    .inputValue();
+  assert(
+    fetchedDescription.includes("warehouse fleet"),
+    "The fetch did not fill the job description.",
+  );
+  assert(
+    (await page.getByTestId("job-description-count").innerText()).replace(/\D/g, "") ===
+      String(fetchedDescription.length),
+    "The description character count did not match the fetched text.",
+  );
+  const sourceLink = page.getByTestId("job-source-url").locator("a");
+  await sourceLink.waitFor();
+  assert(
+    (await sourceLink.getAttribute("href")) === fixturePosting,
+    `The source URL link pointed at "${await sourceLink.getAttribute("href")}".`,
+  );
+  assert(
+    (await page.getByLabel("Shared instructions for this application").inputValue()) === "",
+    "The fetch wrote into the shared instructions.",
+  );
+
+  // Both the setting and the fetched target must survive a reload, which is the
+  // only proof that `sourceUrl` is normalised into the stored project record.
+  await page.waitForTimeout(1400);
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForSelector(".topnav, .onboarding", { timeout: 30000 });
+  if (await page.locator(".onboarding").count()) {
+    await page.getByRole("button", { name: "Choose workspace folder" }).click();
+    await page
+      .getByRole("heading", { name: "Applications", exact: true })
+      .waitFor({ timeout: 15000 });
+  }
+  if (!(await page.locator(".stage-tabs").count())) {
+    await page.locator(".topnav button", { hasText: "Projects" }).click();
+    await page.locator(".project-card", { hasText: "Acme Robotics" }).click();
+    await page.locator(".stage-tabs").waitFor();
+  }
+  const reloadedSourceLink = page.getByTestId("job-source-url").locator("a");
+  await reloadedSourceLink.waitFor();
+  assert(
+    (await reloadedSourceLink.getAttribute("href")) === fixturePosting,
+    "The source URL did not survive a reload.",
+  );
+  assert(
+    (await page.getByPlaceholder(/Paste the full job posting here/).inputValue()).includes(
+      "warehouse fleet",
+    ),
+    "The fetched description did not survive a reload.",
+  );
+
+  await page.locator(".topnav button", { hasText: "Settings" }).click();
+  await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
+  assert(
+    (await page.getByLabel("career-ops folder").inputValue()) === fixtureCareerOps,
+    "The career-ops folder did not survive a reload.",
+  );
+
+  // ----- Job autofill failures: denial, retry, replace -----
+  await page.locator(".topnav button", { hasText: "Projects" }).click();
+  await page.locator(".project-card", { hasText: "Acme Robotics" }).click();
+  await page.locator(".stage-tabs").waitFor();
+
+  // A deny-listed host never leaves the browser: the note appears as soon as
+  // the URL is typed, and the fetch control is not offered.
+  let fetchRequests = 0;
+  const countFetchRequest = (request) => {
+    if (request.url().includes("/api/fetch-job")) fetchRequests += 1;
+  };
+  page.on("request", countFetchRequest);
+  const postingInput = page.getByLabel("Posting URL");
+  await postingInput.fill("https://www.linkedin.com/jobs/view/123");
+  const deniedNote = page.getByTestId("job-fetch-denied");
+  await deniedNote.waitFor();
+  assert(
+    (await deniedNote.innerText()).includes("Paste the job description"),
+    "The denied-source note did not point at the description box.",
+  );
+  assert(
+    await page.getByRole("button", { name: "Fetch job" }).isDisabled(),
+    "A deny-listed URL still offered a fetch.",
+  );
+  await postingInput.press("Enter");
+  await page.waitForTimeout(500);
+  assert(fetchRequests === 0, "A deny-listed URL produced a request.");
+  page.off("request", countFetchRequest);
+  await postingInput.fill("");
+
+  // A failing extractor keeps the URL and the description box usable. The
+  // fixture fails the first request for this run-unique URL and answers on the
+  // next, which is the transient failure retry exists for.
+  const failingCareerOps = fileURLToPath(
+    new URL("./fixtures/job-fetch-failing", import.meta.url),
+  );
+  await page.locator(".topnav button", { hasText: "Settings" }).click();
+  await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
+  await page.getByLabel("career-ops folder").fill(failingCareerOps);
+  await page.locator(".topnav button", { hasText: "Projects" }).click();
+  await page.locator(".project-card", { hasText: "Acme Robotics" }).click();
+  await page.locator(".stage-tabs").waitFor();
+
+  const retryUrl = `https://jobs.ashbyhq.com/acme-robotics/retry-${Date.now()}`;
+  // The failing fixture fails a URL once, then succeeds. Its marker lives in the
+  // temp directory, so record the path here and remove it in `finally`.
+  retryMarkerPath = join(
+    tmpdir(),
+    `cv-studio-smoke-failing-${createHash("sha256").update(retryUrl).digest("hex").slice(0, 16)}`,
+  );
+  const retryInput = page.getByLabel("Posting URL");
+  await retryInput.fill(retryUrl);
+  allowExpectedFetchFailure = true;
+  await page.getByRole("button", { name: "Fetch job" }).click();
+  const failedStatus = page.getByTestId("job-fetch-status");
+  await failedStatus.waitFor({ timeout: 30000 });
+  assert(
+    (await failedStatus.getAttribute("data-code")) === "extractor_failed",
+    `The failed fetch did not report extractor_failed: "${await failedStatus.getAttribute("data-code")}".`,
+  );
+  assert(
+    (await failedStatus.innerText()).includes("The page took too long to render."),
+    "The extractor's own error message did not reach the UI.",
+  );
+  assert(
+    (await page.getByTestId("job-fetch-extractor-code").innerText()).includes(
+      "navigation_timeout",
+    ),
+    "The extractor's own failure code did not reach the UI.",
+  );
+  assert(
+    (await retryInput.inputValue()) === retryUrl,
+    "The failed fetch cleared the URL the user typed.",
+  );
+  const descriptionBox = page.getByPlaceholder(/Paste the full job posting here/);
+  assert(
+    (await descriptionBox.inputValue()).includes("warehouse fleet"),
+    "The failed fetch changed the description.",
+  );
+  await descriptionBox.fill(`${await descriptionBox.inputValue()}\nEdited after a failure.`);
+
+  // Retry is the same control, reusing the same URL. With replace off the
+  // existing description stays; ticking replace overwrites it.
+  await page.getByRole("button", { name: "Try again" }).click();
+  await page
+    .getByTestId("job-fetch-status")
+    .filter({ hasText: "Fetched" })
+    .waitFor({ timeout: 30000 });
+  allowExpectedFetchFailure = false;
+  assert(
+    (await descriptionBox.inputValue()).includes("Edited after a failure."),
+    "A fetch with replace off overwrote the description.",
+  );
+
+  await page.getByLabel("Replace existing text").check();
+  await page.getByRole("button", { name: "Fetch job" }).click();
+  await page.waitForFunction(
+    () => {
+      const box = [...document.querySelectorAll("textarea")].find((element) =>
+        element.placeholder.startsWith("Paste the full job posting here"),
+      );
+      return box?.value.includes("second attempt") ?? false;
+    },
+    undefined,
+    { timeout: 30000 },
+  );
+  assert(
+    (await descriptionBox.inputValue()).includes("second attempt"),
+    "A fetch with replace on did not overwrite the description.",
+  );
+
+  // Put the working fixture back before the workspace switch.
+  await page.locator(".topnav button", { hasText: "Settings" }).click();
+  await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
+  await page.getByLabel("career-ops folder").fill(fixtureCareerOps);
+
+  // ----- Job autofill: create a project from a posting URL -----
+  // The modal fetches before the project exists, which is the only path where
+  // the fetched title and company decide the project's name and folder.
+  const projectIdsBeforeModalFetch = (await readProjects()).map((entry) => entry.id);
+  await page.locator(".topnav button", { hasText: "Projects" }).click();
+  await page.locator(".view-head button.primary").click();
+  const fetchModal = page.locator(".modal");
+  await fetchModal.waitFor();
+  await fetchModal.getByLabel("Posting URL").fill(fixturePosting);
+  await fetchModal.getByRole("button", { name: "Fetch job" }).click();
+  const modalFetchStatus = fetchModal.getByTestId("new-project-fetch-status");
+  await modalFetchStatus.waitFor({ timeout: 30000 });
+  const modalFetchText = await modalFetchStatus.innerText();
+  assert(
+    modalFetchText.includes("ashby"),
+    `The modal fetch did not report a success with the ATS: "${modalFetchText}".`,
+  );
+  assert(
+    (await fetchModal.getByPlaceholder("Machine Learning Engineer").inputValue()) ===
+      "Computer Vision Engineer",
+    "The modal fetch did not pre-fill the job title.",
+  );
+  assert(
+    (await fetchModal.getByPlaceholder("Acme", { exact: true }).inputValue()) ===
+      "Acme Robotics",
+    "The modal fetch did not pre-fill the company.",
+  );
+  const modalDescriptionCount = Number(
+    (await fetchModal.getByTestId("new-project-description-count").innerText()).replace(
+      /\D/g,
+      "",
+    ),
+  );
+  assert(
+    modalDescriptionCount > 200,
+    `The modal reported ${modalDescriptionCount} description characters.`,
+  );
+
+  await fetchModal.getByRole("button", { name: "Create application" }).click();
+  await page.locator(".stage-tabs").waitFor();
+
+  // The project opens already targeted, and its name and folder came from the
+  // fetched job rather than from a placeholder.
+  const fetchedProjectHeading = (await page.locator(".project-head h1").innerText()).trim();
+  assert(
+    fetchedProjectHeading === "Computer Vision Engineer",
+    `The fetched project opened on "${fetchedProjectHeading}".`,
+  );
+  // The eyebrow is uppercased by CSS, so compare it without case.
+  const fetchedProjectEyebrow = await page.locator(".project-head .eyebrow").innerText();
+  assert(
+    fetchedProjectEyebrow.toLowerCase().includes("acme robotics"),
+    `The fetched project did not open with the fetched company: "${fetchedProjectEyebrow}".`,
+  );
+  assert(
+    (await page.getByPlaceholder(/Paste the full job posting here/).inputValue()).includes(
+      "warehouse fleet",
+    ),
+    "The new project did not open with the fetched description.",
+  );
+  const createdSourceLink = page.getByTestId("job-source-url").locator("a");
+  await createdSourceLink.waitFor();
+  assert(
+    (await createdSourceLink.getAttribute("href")) === fixturePosting,
+    `The new project's source URL was "${await createdSourceLink.getAttribute("href")}".`,
+  );
+
+  const createdFromUrl = (await readProjects()).filter(
+    (entry) => !projectIdsBeforeModalFetch.includes(entry.id),
+  );
+  assert(
+    createdFromUrl.length === 1,
+    `Creating a project from a posting URL wrote ${createdFromUrl.length} folders.`,
+  );
+  const createdRecord = JSON.parse(createdFromUrl[0].projectJson || "{}");
+  assert(
+    /^acme-robotics-\d{4}-\d{2}-\d{2}(-\d+)?$/.test(createdFromUrl[0].id),
+    `The fetched project's folder slug was "${createdFromUrl[0].id}".`,
+  );
+  assert(
+    createdRecord.name === "Acme Robotics — Computer Vision Engineer",
+    `project.json named the fetched project "${createdRecord.name}".`,
+  );
+  assert(
+    createdRecord.job?.sourceUrl === fixturePosting,
+    `project.json stored the source URL as "${createdRecord.job?.sourceUrl}".`,
+  );
+  assert(
+    typeof createdRecord.job?.description === "string" &&
+      createdRecord.job.description.includes("warehouse fleet"),
+    "project.json did not store the fetched description.",
+  );
+  assert(
+    createdRecord.job.description.length === modalDescriptionCount,
+    "The modal's character count did not match the stored description.",
+  );
+
+  const jobMirror = await page.evaluate(
+    async ({ name, id }) => {
+      const root = await navigator.storage.getDirectory();
+      const workspace = await root.getDirectoryHandle(name);
+      const projects = await workspace.getDirectoryHandle("projects");
+      const directory = await projects.getDirectoryHandle(id);
+      const inputs = await directory.getDirectoryHandle("inputs");
+      const file = await inputs.getFileHandle("job.md");
+      return await (await file.getFile()).text();
+    },
+    { name: workspaceName, id: createdFromUrl[0].id },
+  );
+  assert(
+    jobMirror.includes("warehouse fleet"),
+    "inputs/job.md did not contain the fetched description.",
+  );
+
+  // "Change workspace folder" lives on Settings; the modal section left us on
+  // the project it created.
   await page.locator(".topnav button", { hasText: "Settings" }).click();
   await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
   await page.getByRole("button", { name: "Change workspace folder" }).click();
@@ -1788,6 +2160,7 @@ try {
   assert(errors.length === 0, `Browser errors:\n${errors.join("\n")}`);
   console.log("Smoke test passed.");
 } finally {
+  if (retryMarkerPath) rmSync(retryMarkerPath, { force: true });
   if (browser) await browser.close();
   try {
     if (server.pid) process.kill(-server.pid, "SIGTERM");

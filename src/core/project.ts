@@ -29,6 +29,11 @@ export interface ProjectJob {
   /** Instructions that apply to every selected deliverable. */
   sharedInstructions: string;
   referenceCv: string;
+  /**
+   * Posting this target was fetched from, when it came from one. Absent for
+   * projects created before job autofill and for targets typed by hand.
+   */
+  sourceUrl?: string;
 }
 
 export interface Project {
@@ -75,6 +80,11 @@ export interface Settings {
   schemaVersion: 1;
   defaultRendererId: string;
   lastProjectId?: string;
+  /**
+   * Absolute path to a career-ops checkout that exposes `browser-extract.mjs`.
+   * Empty disables job fetching; the description box keeps working.
+   */
+  careerOpsDir: string;
 }
 
 export function createDefaultProfile(): Profile {
@@ -101,6 +111,7 @@ export function createDefaultSettings(): Settings {
   return {
     schemaVersion: 1,
     defaultRendererId: "classic",
+    careerOpsDir: "",
   };
 }
 
@@ -165,6 +176,9 @@ export function normalizeProjectRecord(
       ? asText(jobRecord.sharedInstructions)
       : asText(jobRecord.instructions),
     referenceCv: asText(jobRecord.referenceCv),
+    // Only present when the target was fetched; an empty value is the same as
+    // absent, so project.json stays clean for hand-typed targets.
+    sourceUrl: asText(jobRecord.sourceUrl).trim() || undefined,
   };
 
   const filePath = (key: keyof Project["files"]): string | undefined =>

@@ -22,6 +22,8 @@ interface Props {
   onChange: (updater: (project: Project) => Project) => void;
   onOpenSettings: () => void;
   onSavePdf: (blob: Blob, filename: string) => Promise<boolean>;
+  /** career-ops checkout from Settings; empty disables job fetching. */
+  careerOpsDir: string;
 }
 
 const STAGES: Array<{ id: Stage; label: string; hint: string }> = [
@@ -31,7 +33,7 @@ const STAGES: Array<{ id: Stage; label: string; hint: string }> = [
   { id: "preview", label: "4 · Preview", hint: "Edit, tune, save PDF" },
 ];
 
-export function ProjectView({ project, profile, templates, templateSources, onChange, onOpenSettings, onSavePdf }: Props) {
+export function ProjectView({ project, profile, templates, templateSources, onChange, onOpenSettings, onSavePdf, careerOpsDir }: Props) {
   const [stage, setStage] = useState<Stage>("apply");
   const renderer = getRenderer(project.rendererId);
   const schema = getSchema(project.schemaId);
@@ -95,6 +97,8 @@ export function ProjectView({ project, profile, templates, templateSources, onCh
           profile={profile}
           onChange={onChange}
           onNext={() => setStage("prompt")}
+          careerOpsDir={careerOpsDir}
+          onOpenSettings={onOpenSettings}
         />
       )}
       {stage === "prompt" && (

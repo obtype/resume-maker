@@ -78,9 +78,12 @@ interface Props {
   templateSources: PromptTemplateSources;
   legacyArchive: LegacyPromptArchiveResult | null;
   legacyArchiveError: string;
+  /** Absolute path to a career-ops checkout; empty disables job fetching. */
+  careerOpsDir: string;
   onSaveTemplate: (id: PromptTemplateId, text: string) => Promise<void>;
   onResetTemplate: (id: PromptTemplateId) => Promise<void>;
   onReloadTemplate: (id: PromptTemplateId) => void;
+  onChangeCareerOpsDir: (value: string) => void;
   onChangeWorkspace: () => void;
 }
 
@@ -90,9 +93,11 @@ export function SettingsView({
   templateSources,
   legacyArchive,
   legacyArchiveError,
+  careerOpsDir,
   onSaveTemplate,
   onResetTemplate,
   onReloadTemplate,
+  onChangeCareerOpsDir,
   onChangeWorkspace,
 }: Props) {
   const [activeTab, setActiveTab] = useState<PromptTemplateId>("context");
@@ -178,6 +183,29 @@ export function SettingsView({
           <code>{workspaceName || "(none)"}</code>
           <button className="secondary" onClick={onChangeWorkspace}>Change workspace folder</button>
         </div>
+      </section>
+
+      <section className="panel" data-testid="career-ops-settings">
+        <h2>Job intake</h2>
+        <p className="panel-note">
+          Fetching a posting URL uses the local career-ops checkout on this machine. It is an
+          optional dependency: point this at a career-ops folder that contains{" "}
+          <code>browser-extract.mjs</code>. Leave it empty to disable fetching — pasting the job
+          description by hand keeps working.
+        </p>
+        <label className="field">
+          <span>career-ops folder</span>
+          <input
+            value={careerOpsDir}
+            onChange={(event) => onChangeCareerOpsDir(event.target.value)}
+            placeholder="/path/to/career-ops"
+            spellCheck={false}
+          />
+        </label>
+        <p className="panel-note">
+          Fetching sends only the posting URL to the job site. The description comes back from the
+          extractor as plain text, with no model involved, and is stored in this workspace.
+        </p>
       </section>
 
       <section className="panel template-editor">

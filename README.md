@@ -12,6 +12,7 @@ A local-first workbench for turning a personal data record and a job or outreach
 - **Multiple renderers** — Classic sidebar (no summary), Classic + Summary, and Impact (per-role skills, Problem / Solution / Outcome projects).
 - **Inline CV editing** — edit CV text directly in the preview, plus bold/italic/underline, selection font size, global text scale, spacing, margins, and sidebar width.
 - **Real PDF export** — a local Node endpoint renders the final CV with headless Chrome and writes a genuine A4 PDF into the project folder. A print-dialog fallback is always available. Messages are text, not PDFs.
+- **Job autofill (optional)** — paste a posting URL in the New Project modal or on the Target stage and fill the title, company, and description from the page, with the posting URL kept on the project. Needs a local career-ops checkout; see [Job autofill](#job-autofill).
 - **One place for prompt instructions** — five Markdown templates ship with the app; edit the bundled versions or save per-template workspace overrides from Settings.
 - **Local workspace** — each application or outreach effort gets a folder with `project.json`, `cv.json`, `deliverables/`, `inputs/`, `prompts/`, `responses/`, and the exported CV PDF.
 - **PDR import** — `.docx`, `.md`, `.txt`, or pasted text, with the extracted text editable before it reaches a prompt.
@@ -54,6 +55,16 @@ This requires `npm run dev` or `npm run preview` (the Node server). If the endpo
 The generated PDF is one A4 page. If content is clipped, the Preview stage shows a warning before you export.
 
 Cover letters, cold emails, and LinkedIn messages are not PDFs in this feature. Use the Response card actions to copy them or download `.md`/`.txt` files.
+
+## Job autofill
+
+Autofill fills a project's Target stage from a posting URL. Paste the URL in the New Project modal or on the Target stage, and the job title, company, and description are read from the page.
+
+It is optional and needs a local [career-ops](https://github.com/santifer/career-ops) checkout. Point the app at that folder in **Settings → Job intake**. Fetching runs the checkout's `browser-extract.mjs` as a local subprocess: no model, no API key, and no network service beyond the posting page itself. The checkout also needs its Playwright browser — run `npx playwright install chromium` inside it once. Boards with a public API work without that browser; most other pages do not. With no folder set, fetching is disabled and the description box works exactly as before.
+
+Some sites cannot be read automatically: LinkedIn, Indeed, and Glassdoor. Paste those descriptions by hand. Manual pasting always works, with or without a checkout.
+
+A fetch fills only empty fields, so text you already wrote is left alone. Tick **Replace existing text** to overwrite it deliberately. The posting URL is saved on the project and shown as a link on the Target stage.
 
 ## Prompt customization
 
@@ -130,7 +141,7 @@ The browser only exposes the folder name, not the absolute path. `project.json` 
 ## Privacy and trust
 
 - There is no backend service and no analytics. Data stays in the selected folder and in browser storage for the folder handle.
-- The only data that leaves your machine is what you copy into an LLM.
+- The only data that leaves your machine is what you copy into an LLM, plus the posting URL when you use job autofill. The local extractor loads that one page and nothing else.
 - Recipient about text, posts, and other profile details are third-party personal data. They are included only in cold-email/LinkedIn prompts when those deliverables are selected; the UI warns about this. Prompts contain personal data; do not log them.
 - Real personal data belongs in the gitignored `local-data/` folder. `examples/` contains only fictional data.
 - LLM output is treated as untrusted: it is parsed, repaired if necessary, split by deliverable, normalized, and validated against the same JSON Schemas shown to the model before anything is applied.
@@ -151,7 +162,7 @@ The browser only exposes the folder name, not the absolute path. `project.json` 
 | `PDF_OUT=/tmp/cv.pdf npm run smoke` | Also write the exported PDF to a file for inspection. |
 | `PDR_DOCX=path/to/file.docx npm run smoke` | Also exercise DOCX import. |
 
-The smoke test covers the CV-only flow, CV + cover letter, cover-letter-only, cold email without a job, LinkedIn with a recipient, message copy/download, artifact files, and workspace switching. All fixtures are fictional.
+The smoke test covers the CV-only flow, CV + cover letter, cover-letter-only, cold email without a job, LinkedIn with a recipient, message copy/download, artifact files, workspace switching, and job autofill against a fixture extractor. All fixtures are fictional.
 
 ## Troubleshooting
 
@@ -160,6 +171,8 @@ The smoke test covers the CV-only flow, CV + cover letter, cover-letter-only, co
 **Chrome asks for permission again after a restart** — click **Reconnect** on the workspace screen. The handle is remembered, but write permission is not permanent.
 
 **Automatic PDF export falls back to print** — the Node server is not running, or Chrome could not be launched. Run `npm run dev` (or `npm run preview`), install Chrome, or set `CHROME_PATH`.
+
+**Job autofill fails on one site but works on another** — the career-ops checkout is missing its Playwright browser. Boards with a public API (Ashby, Greenhouse, Lever, Workday) are read without one, so they keep working while every other page fails. Run `npx playwright install chromium` inside the checkout, then retry.
 
 **PDF has different fonts from the preview** — headless Chrome uses fonts installed on the machine. A font that only exists in your normal browser profile may not be available to headless Chrome.
 

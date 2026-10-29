@@ -725,6 +725,54 @@ input[type="file"] {
   margin: 0;
   max-width: 760px;
 }
+.job-fetch h3 {
+  margin-bottom: 4px;
+}
+.job-fetch-bar {
+  margin: 12px 0 4px;
+  flex-wrap: nowrap;
+}
+/* Inputs are full-width by default; inside the fetch bar the URL takes the
+   remaining space and the button keeps its own width. */
+.job-fetch-bar input {
+  width: auto;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.job-fetch-bar button {
+  flex: none;
+}
+.job-fetch-options {
+  margin: 2px 0 6px;
+  font-size: 12px;
+}
+.job-fetch-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.job-fetch-options input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.job-fetch-status p {
+  margin: 0;
+}
+.job-fetch-status p + p {
+  margin-top: 4px;
+}
+.job-fetch-status .ghost {
+  margin-top: 8px;
+}
+.job-source {
+  margin: -6px 0 13px;
+  word-break: break-all;
+}
 .pdr-meta {
   display: flex;
   gap: 14px;
@@ -1195,6 +1243,10 @@ input[type="file"] {
   border-radius: 14px;
   padding: 22px;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+  /* The modal grew past a laptop viewport once the optional URL row and its
+     fetch status were added; scrolling keeps Create reachable. */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
 }
 .modal-actions {
   display: flex;
