@@ -19,6 +19,23 @@ describe("LLM response parsing", () => {
     expect(JSON.parse(extracted)).toEqual({ name: "A {B} C", nested: { x: 1 } });
   });
 
+  it("removes backslash escapes ChatGPT adds to structural brackets", () => {
+    const raw =
+      '{ "contact": \\[ "a@example.com", "b@example.com" \\], "nested": \\{ "x": 1 \\} }';
+    const result = parseLlmResponse(raw);
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual({
+      contact: ["a@example.com", "b@example.com"],
+      nested: { x: 1 },
+    });
+  });
+
+  it("does not strip a genuinely escaped backslash before a bracket", () => {
+    const result = parseLlmResponse('{"pattern": "\\\\[x\\\\]"}');
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual({ pattern: "\\[x\\]" });
+  });
+
   it("repairs trailing commas", () => {
     const result = parseLlmResponse('{"name": "Alex", "items": [1, 2,],}');
     expect(result.ok).toBe(true);

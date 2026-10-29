@@ -205,7 +205,7 @@ function buildSchema(options: {
 }
 
 const ONE_PAGE_NOTE =
-  "Keep the finished CV to one A4 page. Prefer 3-4 bullets for the most relevant roles and 2-3 for older or less relevant roles.";
+  "Keep the finished CV to one A4 page. Prefer 3-4 bullets for the most relevant roles and 2-3 for older or less relevant roles. Use the schema's exact field names and value types: do not rename fields or replace an array with an object. In particular, skills use `label` and an array of short `items` strings; experience, project, and custom entries use `role`, `dates`, and `org`, never `name`, `company`, or `meta` in place of them.";
 
 export const CV_SCHEMAS: Record<string, CvSchemaDef> = {
   classic: {

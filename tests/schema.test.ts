@@ -56,6 +56,54 @@ describe("CV schemas", () => {
     expect(normalized.basics.contact).toEqual(["alex@example.com"]);
   });
 
+  it("normalizes common LLM field aliases before validating", () => {
+    const result = validateCv(
+      {
+        schemaVersion: 2,
+        basics: { name: "Alex", contact: ["alex@example.com"] },
+        sectionTitles: {},
+        education: [{ degree: "BSc", school: "Uni", meta: "2020" }],
+        skills: [{ category: "Languages", items: "Python, PyTorch, C++" }],
+        experience: [
+          {
+            title: "Engineer",
+            company: "Acme",
+            meta: "2024 – 2025",
+            bullets: ["Built things."],
+          },
+        ],
+        projects: [
+          { name: "Project X", meta: "2025", bullets: ["Shipped it."] },
+        ],
+        custom: [
+          { name: "Award", meta: "2024", description: "Won a prize." },
+        ],
+      },
+      "classic",
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.valid).toBe(true);
+    expect(result.data.skills[0]).toEqual({
+      label: "Languages",
+      items: ["Python", "PyTorch", "C++"],
+    });
+    expect(result.data.experience[0]).toMatchObject({
+      role: "Engineer",
+      dates: "2024 – 2025",
+      org: "Acme",
+    });
+    expect(result.data.projects[0]).toMatchObject({
+      role: "Project X",
+      dates: "2025",
+    });
+    expect(result.data.custom[0]).toMatchObject({
+      role: "Award",
+      dates: "2024",
+      bullets: ["Won a prize."],
+    });
+  });
+
   it("creates an empty CV with the schema's summary field only when allowed", () => {
     expect(createEmptyCv("classic").summary).toBeUndefined();
     expect(createEmptyCv("classic-summary").summary).toBe("");

@@ -33,6 +33,44 @@ const asStringArray = (value: unknown): string[] => {
   return [];
 };
 
+/** First non-empty string among the given aliases, in priority order. */
+function pickString(raw: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = asString(raw[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+/** First non-empty string array among the given aliases, in priority order. */
+function pickStringArray(
+  raw: Record<string, unknown>,
+  ...keys: string[]
+): string[] {
+  for (const key of keys) {
+    const value = asStringArray(raw[key]);
+    if (value.length) return value;
+  }
+  return [];
+}
+
+/**
+ * Skill lists are often returned as one comma-separated string instead of an
+ * array. Split those without touching the comma inside ordinary bullets.
+ */
+function asSkillItems(value: unknown): string[] {
+  const direct = asStringArray(value);
+  const source = direct.length
+    ? direct
+    : typeof value === "string"
+      ? [value]
+      : [];
+  return source
+    .flatMap((item) => item.split(/,\s*|;\s*|\u00b7|\|/))
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function normalizeBasics(value: unknown): Basics {
   const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   const contact = asStringArray(raw.contact);
@@ -62,9 +100,9 @@ function normalizeEducation(value: unknown): EducationEntry[] {
   return value.map((item) => {
     const raw = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
     return {
-      degree: asString(raw.degree),
-      school: asString(raw.school),
-      meta: asString(raw.meta),
+      degree: pickString(raw, "degree", "qualification"),
+      school: pickString(raw, "school", "institution", "university"),
+      meta: pickString(raw, "meta", "dates", "period", "details"),
     };
   });
 }
@@ -74,8 +112,8 @@ function normalizeSkills(value: unknown): SkillGroup[] {
   return value.map((item) => {
     const raw = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
     return {
-      label: asString(raw.label),
-      items: asStringArray(raw.items),
+      label: pickString(raw, "label", "category", "group", "name"),
+      items: asSkillItems(raw.items),
     };
   });
 }
@@ -84,17 +122,32 @@ function normalizeExperience(
   value: unknown,
   withSkills: boolean,
   includeEmpty = true,
+  custom = false,
 ): ExperienceEntry[] {
   if (!Array.isArray(value)) return [];
   return value.map((item) => {
     const raw = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
     const entry: ExperienceEntry = {
-      role: asString(raw.role),
-      dates: asString(raw.dates),
-      org: asString(raw.org),
-      bullets: asStringArray(raw.bullets),
+      role: pickString(
+        raw,
+        "role",
+        "title",
+        "position",
+        ...(custom ? ["name"] : []),
+      ),
+      dates: pickString(raw, "dates", "meta", "period", "date"),
+      org: pickString(raw, "org", "company", "employer", "organization"),
+      bullets: pickStringArray(
+        raw,
+        "bullets",
+        "achievements",
+        "highlights",
+        ...(custom ? ["description"] : []),
+      ),
     };
-    const blurb = asString(raw.blurb);
+    const blurb = custom
+      ? pickString(raw, "blurb")
+      : pickString(raw, "blurb", "description", "summary");
     if (blurb) entry.blurb = blurb;
     if (withSkills && (includeEmpty || raw.skills !== undefined)) {
       entry.skills = asStringArray(raw.skills);
@@ -114,14 +167,14 @@ function normalizeProjects(
   return value.map((item) => {
     const raw = (item && typeof item === "object" ? item : {}) as Record<string, unknown>;
     const entry: ProjectEntry = {
-      role: asString(raw.role),
-      dates: asString(raw.dates),
-      org: asString(raw.org),
+      role: pickString(raw, "role", "title", "name"),
+      dates: pickString(raw, "dates", "meta", "period", "date"),
+      org: pickString(raw, "org", "company", "employer", "organization"),
     };
-    const blurb = asString(raw.blurb);
+    const blurb = pickString(raw, "blurb", "description", "summary");
     if (blurb) entry.blurb = blurb;
     if (mode !== "pso" && (includeEmpty || raw.bullets !== undefined)) {
-      entry.bullets = asStringArray(raw.bullets);
+      entry.bullets = pickStringArray(raw, "bullets", "achievements", "highlights");
     }
     if (mode !== "bullets") {
       for (const key of ["problem", "solution", "outcome"] as const) {
@@ -155,7 +208,7 @@ function normalizeCore(value: unknown, options: NormalizeOptions): CvContent {
     skills: normalizeSkills(raw.skills),
     experience,
     projects: normalizeProjects(raw.projects, options.projectMode, options.includeEmpty),
-    custom: normalizeExperience(raw.custom, false, options.includeEmpty),
+    custom: normalizeExperience(raw.custom, false, options.includeEmpty, true),
   };
   if (options.summary && (options.includeEmpty || raw.summary !== undefined)) {
     cv.summary = asString(raw.summary);

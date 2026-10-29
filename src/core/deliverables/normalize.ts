@@ -74,21 +74,28 @@ export function normalizeDeliverableSelection(
   };
 }
 
+/** Models sometimes double-escape newlines inside message prose (`\\n`). */
+function normalizeMessageText(value: string): string {
+  return value.replace(/\\r\\n|\\n/g, "\n").trim();
+}
+
 export function normalizeCoverLetter(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === "string" ? normalizeMessageText(value) : "";
 }
 
 export function normalizeColdEmail(value: unknown): ColdEmailContent {
-  if (typeof value === "string") return { subject: "", body: value.trim() };
+  if (typeof value === "string") {
+    return { subject: "", body: normalizeMessageText(value) };
+  }
   if (!isRecord(value)) return { subject: "", body: "" };
   return {
     subject: typeof value.subject === "string" ? value.subject.trim() : "",
-    body: typeof value.body === "string" ? value.body.trim() : "",
+    body: typeof value.body === "string" ? normalizeMessageText(value.body) : "",
   };
 }
 
 export function normalizeLinkedinMessage(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === "string" ? normalizeMessageText(value) : "";
 }
 
 export interface SplitResponse {

@@ -239,7 +239,8 @@ describe("bundled prompt templates", () => {
 
   it("keeps shared rules in context and CV-only rules out of the message templates", () => {
     const context = TEMPLATES.context.toLowerCase();
-    expect(context).toContain("no markdown fences");
+    expect(context).toContain("fenced code block");
+    expect(context).toContain("do not escape");
     expect(context).toContain("bare url");
     expect(context).toContain("never invent");
     expect(context).not.toContain("{{reference_cv}}");
@@ -278,6 +279,7 @@ describe("CV-only prompt", () => {
 
     expect(prompt).toContain("# OUTPUT CONTRACT");
     expect(prompt).toContain("Return the CV object directly");
+    expect(prompt).toContain("Requested deliverable — mandatory");
     expect(prompt).not.toContain("envelope");
     expect(prompt).not.toContain("coverLetter");
     expect(prompt).not.toContain("coldEmail");
@@ -321,6 +323,25 @@ describe("combined prompt", () => {
     expect(prompt).toContain('"coverLetter"');
     expect(prompt).toContain("source of truth");
     expect(prompt).not.toContain("ENVELOPE-CONTRACT-MISSING");
+  });
+
+  it("puts the requested response shape before the task sections", () => {
+    const { profile, project } = fixture({
+      selected: ["cv", "coverLetter", "coldEmail", "linkedinMessage"],
+    });
+    const prompt = build(project, profile);
+
+    const checklist = prompt.indexOf("# REQUIRED RESPONSE SHAPE");
+    expect(checklist).toBeGreaterThan(-1);
+    expect(checklist).toBeLessThan(prompt.indexOf("TASK — CV"));
+    expect(prompt.indexOf("Requested deliverables — all mandatory")).toBeGreaterThan(
+      checklist,
+    );
+    for (const key of ["cv", "coverLetter", "coldEmail", "linkedinMessage"]) {
+      expect(prompt.slice(checklist, prompt.indexOf("# ABSOLUTE RULES"))).toContain(
+        `\`${key}\``,
+      );
+    }
   });
 
   it("does not duplicate the existing CV and instructs consistency", () => {

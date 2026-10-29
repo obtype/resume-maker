@@ -38,8 +38,30 @@ export function extractJson(text: string): string {
   return source.slice(start);
 }
 
+/**
+ * ChatGPT sometimes escapes structural JSON characters to protect Markdown
+ * (`\[`, `\]`, `\{`, `\}`). Those escapes are invalid in JSON, so drop the
+ * stray backslash while leaving an escaped backslash (`\\[`) intact.
+ */
+function unescapeJsonStructure(source: string): string {
+  let output = "";
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    if (
+      char === "\\" &&
+      i + 1 < source.length &&
+      "[]{}".includes(source[i + 1]) &&
+      source[i - 1] !== "\\"
+    ) {
+      continue;
+    }
+    output += char;
+  }
+  return output;
+}
+
 export function parseLlmResponse(text: string): ParsedResponse {
-  const extracted = extractJson(text);
+  const extracted = unescapeJsonStructure(extractJson(text));
   if (!extracted.trim()) return { ok: false, error: "The response is empty.", extracted };
   const accept = (value: unknown, repaired: boolean): ParsedResponse =>
     value && typeof value === "object"

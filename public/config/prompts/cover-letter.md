@@ -21,6 +21,6 @@ Write a cover letter for the target job described in the shared context. The let
 
 # COVER LETTER OUTPUT SHAPE
 
-The coverLetter value is a single string and must validate against:
+`coverLetter` is a required top-level key in the response object. Its value is a single string and must validate against:
 
 {{COVER_LETTER_SCHEMA}}

@@ -27,7 +27,7 @@ The old single-file override `config/cv-prompt.md` is not an active template. On
 
 `buildProjectPrompt({ profile, project, schema, templates, date? })` emits, in order:
 
-1. **Shared context** — `templates.context`, once.
+1. **Shared context** — `templates.context`, once, including the generated `{{RESPONSE_CHECKLIST}}` so the required keys appear before the task sections.
 2. **Selected tasks** — the task templates for the current selection, in canonical order: CV, cover letter, cold email, LinkedIn message.
 3. **Output contract** — generated. A CV-only request gets the bare-CV contract; any other selection gets the envelope JSON Schema with only the requested keys.
 4. **Metadata footer** — generated: CV schema line (or `Schema: none (CV not requested)`), requested deliverables, prompt version, and UTC date.
@@ -49,6 +49,7 @@ Unknown `{{PLACEHOLDER}}` tokens remain literally in the prompt so template typo
 | Shared context | `{{JOB_DESCRIPTION}}` | Full job posting, or a “no job description” note. |
 | Shared context | `{{SHARED_INSTRUCTIONS}}` | Project shared instructions followed by profile default instructions, or “(No shared instructions.)”. |
 | Shared context | `{{EXISTING_CV}}` | When the CV is requested: a note to use the `cv` value in this response as the source of truth. When it is not requested but the project has CV content: a compact Markdown rendering of that CV. Otherwise: a no-existing-CV note. |
+| Shared context | `{{RESPONSE_CHECKLIST}}` | Generated from the selection: the exact mandatory top-level keys in order, their value shapes, and a response skeleton. CV-only gets the bare-CV instruction instead. |
 | CV | `{{REFERENCE_CV}}` | Per-project reference CV, or a “no reference CV” note. Only the CV task receives it. |
 | CV | `{{CV_INSTRUCTIONS}}` | Per-deliverable CV instructions, or “(No deliverable-specific instructions.)”. |
 | CV | `{{SCHEMA_NAME}}` | Human-readable schema name. |
@@ -124,16 +125,19 @@ A bare CV returned for a multi-deliverable request is treated as the CV when the
 1. trims and removes a BOM;
 2. unwraps a single leading/trailing Markdown fence (with or without `json`);
 3. finds the first `{` and scans for the matching close brace, respecting strings and escapes;
-4. `JSON.parse`;
-5. if that fails, `jsonrepair` and parse again;
-6. reports `repaired` so the UI can warn the user.
+4. removes stray backslashes before structural brackets and braces (`\[`, `\]`, `\{`, `\}`), which ChatGPT sometimes adds to protect Markdown; escaped backslashes (`\\[`) are left alone;
+5. `JSON.parse`;
+6. if that fails, `jsonrepair` and parse again;
+7. reports `repaired` so the UI can warn the user.
 
 Then `splitResponseForSelection(value, selection)` returns the raw parts, missing requested ids, unrequested ids, and whether the response was a bare CV. Each part is validated independently:
 
-- **CV:** `validateCv(value, project.schemaId)` normalizes and validates against the same CV JSON Schema shown to the model. Apply is disabled until it is valid.
+- **CV:** `validateCv(value, project.schemaId)` normalizes and validates against the same CV JSON Schema shown to the model. Apply is disabled until it is valid. Normalization also maps common LLM synonyms (`category` → `label`, `company` → `org`, `meta` → `dates`, `name` → `role`, `description` → a custom bullet) and splits comma-separated skill items, so a semantically correct CV is not rejected over field naming.
 - **Cover letter:** `validateCoverLetter` trims, validates the 1–6,000 character string, and warns outside 800–5,000.
 - **Cold email:** `validateColdEmail` trims subject/body, validates both as non-empty and within 160/4,000 characters, and warns when the subject is over 100 or the body is outside 300–2,500.
 - **LinkedIn message:** `validateLinkedinMessage` trims, validates the 1–2,000 character string, and warns when the message is under 300 characters (likely a connection note) or over 1,200.
+
+Message normalization also converts double-escaped newline sequences (`\\n`) to real newlines, since some chat models escape prose a second time.
 
 A parse success is not enough. The user sees per-card status (valid / warnings / errors / missing), issue paths, copy/download actions, and a Save button that is disabled until that card validates. One invalid part does not block another. The cover-letter preview is read-only, escapes all input before adding a conservative Markdown subset (paragraphs, line breaks, bold, italic, and validated links), and never injects raw model HTML.
 
@@ -143,7 +147,11 @@ The bundled templates enforce:
 
 **Shared context**
 
-- JSON only, no fences or commentary;
+- the generated response checklist puts every required top-level key before the task sections;
+- one JSON object containing every requested deliverable; no bare CV when other deliverables are requested;
+- a single fenced code block is allowed, with no commentary around it;
+- literal JSON: no backslash-escaped brackets or braces, and one `\n` per newline inside strings;
+- missing supporting detail is not a reason to drop a deliverable; write around the gap without inventing facts;
 - facts only from basics + PDR; a reference CV, existing CV, and recipient text are for tone and targeting, not new candidate facts;
 - exact names, contact details, employers, institutions, dates, and qualifications;
 - no invented metrics, technologies, responsibilities, employers, achievements, or recipient details;

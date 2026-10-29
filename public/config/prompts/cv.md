@@ -32,6 +32,8 @@ Return an object that validates against this JSON Schema:
 
 {{SCHEMA_JSON}}
 
+If the CV is the only requested deliverable, return that CV object directly as the whole response. If other deliverables are also requested, place the CV object under the top-level `cv` key of the single response object. Never return the CV as the whole response when other deliverables are requested.
+
 # SCHEMA-SPECIFIC RULES
 
 {{SCHEMA_NOTES}}
@@ -41,6 +43,7 @@ Return an object that validates against this JSON Schema:
 Check all of the following silently:
 
 - The JSON matches the schema exactly and every required field is present.
+- Every property name and value type matches the schema; no field is renamed and no array is replaced with an object.
 - Every factual claim is supported by the source material.
 - Contact details are unchanged.
 - The most relevant experience appears first.

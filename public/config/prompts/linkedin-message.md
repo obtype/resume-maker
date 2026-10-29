@@ -26,6 +26,6 @@ The recipient block may include third-party personal data such as profile text a
 
 # LINKEDIN MESSAGE OUTPUT SHAPE
 
-The linkedinMessage value is a single string and must validate against:
+`linkedinMessage` is a required top-level key in the response object. Its value is a single string and must validate against:
 
 {{LINKEDIN_SCHEMA}}

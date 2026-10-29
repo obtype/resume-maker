@@ -15,7 +15,7 @@ import type {
   Recipient,
 } from "../deliverables/types";
 
-export const PROMPT_VERSION = "2026-10-22.2";
+export const PROMPT_VERSION = "2026-10-24.1";
 
 /** Static templates that make up one prompt, in composition order. */
 export const PROMPT_TEMPLATE_IDS = [
@@ -59,8 +59,13 @@ export const FALLBACK_TEMPLATES: PromptTemplates = {
 You are an expert application writer.
 
 # REQUIRED DELIVERABLES
-Write only the deliverables named in the output contract. Return JSON only, with no markdown fences and no commentary.
+This prompt may assign one or more deliverables. The output contract lists them; every listed key is mandatory.
+Return one JSON object containing every requested key, and do not stop after the first deliverable. If a task has little or no supporting detail, complete it from the available facts without inventing any.
+Return only that JSON object, with no commentary. A single fenced code block is allowed. Write the JSON literally: do not escape brackets or braces with backslashes.
 Use only facts from the candidate basics and personal data record. Never invent employers, dates, metrics, or skills.
+
+# REQUIRED RESPONSE SHAPE
+{{RESPONSE_CHECKLIST}}
 
 # CANDIDATE BASICS
 {{BASICS}}
@@ -81,6 +86,7 @@ Company: {{COMPANY}}
 {{EXISTING_CV}}`,
   cv: `# TASK — CV
 Create a tailored CV that matches the required schema exactly. Keep it to one A4 page and use only facts from the source material.
+If the CV is the only requested deliverable, return the CV object directly. If other deliverables are also requested, place it under the top-level \`cv\` key of the single response object.
 
 # REFERENCE CV
 {{REFERENCE_CV}}
@@ -305,10 +311,17 @@ export function resolveDeliverableSelection(
 
 function existingCvContext(project: Project, selected: DeliverableId[]): string {
   if (selected.includes("cv")) {
+    if (selected.length === 1) {
+      return [
+        "The CV is the only requested deliverable.",
+        "Return the CV object directly, using the schema below.",
+      ].join("\n");
+    }
     return [
       "The CV is part of this same response.",
       "Use the `cv` value as the source of truth for the candidate's facts, role, company, and dates.",
       "Keep every other deliverable consistent with it. Do not repeat the CV text verbatim.",
+      "Do not return the CV alone: after the CV, write every other requested deliverable in the same JSON object.",
     ].join("\n");
   }
   if (deliverableHasContent(project, "cv")) {
@@ -321,6 +334,58 @@ function messageSchemaText(id: MessageDeliverableId): string {
   return JSON.stringify(MESSAGE_DELIVERABLES[id].jsonSchema, null, 2);
 }
 
+function responseChecklistText(
+  selected: DeliverableId[],
+  schema: CvSchemaDef,
+): string {
+  if (selected.length === 1 && selected[0] === "cv") {
+    return [
+      "Requested deliverable — mandatory:",
+      "",
+      `1. \`cv\` — CV object matching the ${schema.name} schema (${schema.id}).`,
+      "",
+      "Return the CV object directly as the entire response. Do not wrap it in another object.",
+    ].join("\n");
+  }
+
+  const descriptions: Record<DeliverableId, string> = {
+    cv: `CV object matching the ${schema.name} schema (${schema.id})`,
+    coverLetter: "single string",
+    coldEmail: "object with non-empty `subject` and `body` strings",
+    linkedinMessage: "single string",
+  };
+
+  const assignments = selected.map(
+    (id, index) => `${index + 1}. \`${id}\` — ${descriptions[id]}.`,
+  );
+
+  const shape = selected.map((id) => {
+    if (id === "cv") return `  "cv": <CV object matching the schema>`;
+    if (id === "coldEmail") {
+      return `  "coldEmail": { "subject": <string>, "body": <string> }`;
+    }
+    return `  "${id}": <${deliverableLabel(id)} string>`;
+  });
+  const last = shape.length - 1;
+  const jsonShape = [
+    "{",
+    ...shape.map((line, index) => (index === last ? line : `${line},`)),
+    "}",
+  ];
+
+  return [
+    "Requested deliverables — all mandatory, in this exact top-level order:",
+    "",
+    ...assignments,
+    "",
+    "Return exactly one JSON object in this shape. Replace every `<…>` placeholder with real content; the placeholders themselves are not valid JSON.",
+    "",
+    "```json",
+    ...jsonShape,
+    "```",
+  ].join("\n");
+}
+
 function outputContractText(
   selected: DeliverableId[],
   schema: CvSchemaDef,
@@ -330,7 +395,7 @@ function outputContractText(
       "# OUTPUT CONTRACT",
       "",
       "Return exactly one JSON object: the CV described by the schema above.",
-      "Return the CV object directly, with no wrapper object, no extra keys, no markdown fences, and no commentary.",
+      "Return the CV object directly, with no wrapper object, no extra keys, and no commentary. A single fenced code block is allowed.",
       `The object must validate against the ${schema.name} schema (${schema.id}).`,
     ].join("\n");
   }
@@ -348,9 +413,9 @@ function outputContractText(
   return [
     "# OUTPUT CONTRACT",
     "",
-    `Return exactly one JSON object with only these keys, in this order: ${keys}.`,
+    `Return exactly one JSON object with only these keys, in this order: ${keys}. All of these keys are mandatory and must be non-empty.`,
     cvNote,
-    "Do not return a bare CV object, an array, markdown fences, or commentary.",
+    "Do not return a bare CV object, an array, or commentary. A single fenced code block is allowed.",
     "",
     "The object must validate against this JSON Schema:",
     "",
@@ -406,6 +471,7 @@ export function buildProjectPrompt({
     JOB_DESCRIPTION: jobDescriptionText(project),
     SHARED_INSTRUCTIONS: instructionsText(profile, project),
     EXISTING_CV: existingCvContext(project, selected),
+    RESPONSE_CHECKLIST: responseChecklistText(selected, schema),
   };
 
   const taskValues: Record<DeliverableId, Record<string, string>> = {

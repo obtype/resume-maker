@@ -290,6 +290,19 @@ describe("message normalization", () => {
     expect(normalizeLinkedinMessage(null)).toBe("");
   });
 
+  it("repairs double-escaped newlines in message prose", () => {
+    expect(normalizeCoverLetter("Dear team,\\n\\nBody")).toBe(
+      "Dear team,\n\nBody",
+    );
+    expect(normalizeLinkedinMessage("Hello,\\r\\nThanks")).toBe(
+      "Hello,\nThanks",
+    );
+    expect(normalizeColdEmail({ subject: "Hi", body: "One\\nTwo" })).toEqual({
+      subject: "Hi",
+      body: "One\nTwo",
+    });
+  });
+
   it("trims cold email fields and drops unknown fields", () => {
     expect(
       normalizeColdEmail({

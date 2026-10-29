@@ -26,6 +26,6 @@ The recipient block may include third-party personal data such as profile text a
 
 # COLD EMAIL OUTPUT SHAPE
 
-The coldEmail value must be an object with non-empty subject and body strings and must validate against:
+`coldEmail` is a required top-level key in the response object. Its value must be an object with non-empty subject and body strings and must validate against:
 
 {{COLD_EMAIL_SCHEMA}}
